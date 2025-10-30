@@ -1,0 +1,68 @@
+services:
+  api:
+    build:
+      context: ../..
+    image: bella-queue-api:latest
+    container_name: bella-queue-api
+    ports:
+      - "${API_PORT:-8080}:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - BELLA_DB_URL=jdbc:mysql://mysql:3306/${DB_NAME:-bella_queue}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true
+      - BELLA_DB_USERNAME=${BELLA_DB_USERNAME:-bella_user}
+      - BELLA_DB_PASSWORD=${BELLA_DB_PASSWORD:-123456}
+      - QUEUE_REDIS_HOST=redis
+      - QUEUE_REDIS_PORT=6379
+      - QUEUE_REDIS_PASSWORD=${QUEUE_REDIS_PASSWORD:-123456}
+      - QUEUE_SECRET_KEY=${QUEUE_SECRET_KEY:-0123456789abcdef}
+      - BATCH_THREAD_SIZE=${BATCH_THREAD_SIZE:-1}
+      - BELLA_OPEN_API_BASE=${BELLA_OPEN_API_BASE}
+      - BELLA_OPEN_CONSOLE_KEY=${BELLA_OPEN_CONSOLE_KEY}
+      - BELLA_QUEUE_BATCH_FILE_PATH=${BELLA_QUEUE_BATCH_FILE_PATH:-/tmp/bella-queue/batch}
+      - BATCH_MAX_SPLITTING=${BATCH_MAX_SPLITTING:-100}
+      - BELLA_QUEUE_LOAD_BATCH_SIZE=${BELLA_QUEUE_LOAD_BATCH_SIZE:-100}
+    volumes:
+      - ./data/api/logs:/opt/bella-queue/logs
+      - ./data/api/cache:/opt/bella-queue/cache
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: bella-queue-mysql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-123456}
+      MYSQL_DATABASE: ${DB_NAME:-bella_queue}
+      MYSQL_USER: ${BELLA_DB_USERNAME:-bella_user}
+      MYSQL_PASSWORD: ${BELLA_DB_PASSWORD:-123456}
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+      - ../../sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${BELLA_DB_USERNAME:-bella_user}", "--password=${BELLA_DB_PASSWORD:-123456}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: bella-queue-redis
+    command: redis-server --requirepass ${QUEUE_REDIS_PASSWORD:-123456}
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "${QUEUE_REDIS_PASSWORD:-123456}", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped

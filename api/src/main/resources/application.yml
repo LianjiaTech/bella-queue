@@ -1,0 +1,82 @@
+server:
+  tomcat:
+    threads:
+      max: 500
+  max-http-header-size: 10240
+
+spring:
+  datasource:
+    url: ${BELLA_DB_URL}
+    username: ${BELLA_DB_USERNAME}
+    password: ${BELLA_DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      minimum-idle: 25
+      maximum-pool-size: 200
+      idle-timeout: 30000
+      max-lifetime: 1800000
+      connection-timeout: 30000
+      connection-test-query: SELECT 1
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: NON_NULL
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=30m
+
+# Docs API配置
+springdoc:
+  swagger-ui:
+    path: /docs/index.html
+    enabled: true
+  api-docs:
+    path: /docs/api
+    enabled: true
+
+
+bella:
+  openapi:
+    host: ${BELLA_OPEN_API_BASE}
+    apikey: ${BELLA_OPEN_CONSOLE_KEY}
+    service-ak: ${BELLA_OPEN_CONSOLE_KEY}
+    service: bella-queue
+  server:
+    initializer:
+      enabled: true
+  queue:
+    secretKey: ${QUEUE_SECRET_KEY}
+    batch:
+      threadSize: ${BATCH_THREAD_SIZE}
+    redis:
+      host: ${QUEUE_REDIS_HOST}
+      port: ${QUEUE_REDIS_PORT}
+      password: ${QUEUE_REDIS_PASSWORD}
+
+app:
+  id: bella-queue
+
+management:
+  health:
+    redis:
+      enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+      profile: ${spring.profiles.active}
+
+logging:
+  level:
+    javax.net.ssl: ERROR
+    okhttp3: ERROR
+    okhttp3.internal: ERROR

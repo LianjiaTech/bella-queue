@@ -1,0 +1,557 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    
+    <modelVersion>4.0.0</modelVersion>
+    <packaging>jar</packaging>
+
+    <!-- Parent Configuration -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.3.12.RELEASE</version>
+        <relativePath/>
+    </parent>
+
+    <!-- Project Information -->
+    <groupId>io.github.bella-top</groupId>
+    <artifactId>bella-queue</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <name>bella-queue</name>
+    <description>High-Performance AI Task Queue Processing Engine, Supporting Batch API and Task API</description>
+
+    <!-- Properties -->
+    <properties>
+        <!-- Java Version -->
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        
+        <!-- Spring Framework Versions -->
+        <spring-cloud.version>Greenwich.SR3</spring-cloud.version>
+        
+        <!-- Database & ORM Versions -->
+        <jooq.version>3.15.5</jooq.version>
+        <mysql.version>8.0.33</mysql.version>
+        
+        <!-- Bella Framework Versions -->
+        <bella-openapi.version>1.2.1</bella-openapi.version>
+        <bella-openai.version>0.23.94</bella-openai.version>
+        
+        <!-- Utility Library Versions -->
+        <guava.version>30.1-jre</guava.version>
+        <jedis.version>5.1.5</jedis.version>
+        <commons-pool2.version>2.12.0</commons-pool2.version>
+        <apollo.version>2.1.0</apollo.version>
+        <expiringmap.version>0.5.8</expiringmap.version>
+        <guava-retrying.version>2.0.0</guava-retrying.version>
+        
+        <!-- Testing Versions -->
+        <mockito.version>4.6.1</mockito.version>
+        <byte-buddy.version>1.12.10</byte-buddy.version>
+        
+        <!-- Monitoring Versions -->
+        <micrometer-jvm-extras.version>0.2.2</micrometer-jvm-extras.version>
+        
+        <!-- Plugin Versions -->
+        <maven-deploy-plugin.version>2.8.2</maven-deploy-plugin.version>
+        <build-helper-maven-plugin.version>3.2.0</build-helper-maven-plugin.version>
+    </properties>
+
+    <!-- Dependencies -->
+    <dependencies>
+        
+        <!-- Spring Boot Starters -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- Spring Cloud -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-hystrix</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-commons</artifactId>
+        </dependency>
+
+        <!-- Spring Framework -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context-support</artifactId>
+        </dependency>
+
+        <!-- Database & ORM -->
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+        </dependency>
+        
+        <!-- JOOQ Dependencies -->
+        <dependency>
+            <groupId>org.jooq</groupId>
+            <artifactId>jooq</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jooq</groupId>
+            <artifactId>jooq-meta</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.cooder</groupId>
+            <artifactId>jooq-mate-types</artifactId>
+            <version>2.1.0</version>
+        </dependency>
+
+        <!-- Redis & Caching -->
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>${jedis.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+            <version>${commons-pool2.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>net.jodah</groupId>
+            <artifactId>expiringmap</artifactId>
+            <version>${expiringmap.version}</version>
+        </dependency>
+
+        <!-- JSON Processing -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <!-- Utility Libraries -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.rholder</groupId>
+            <artifactId>guava-retrying</artifactId>
+            <version>${guava-retrying.version}</version>
+        </dependency>
+
+        <!-- Configuration -->
+        <dependency>
+            <groupId>com.ctrip.framework.apollo</groupId>
+            <artifactId>apollo-client</artifactId>
+            <version>${apollo.version}</version>
+        </dependency>
+
+        <!-- Bella Framework -->
+        <dependency>
+            <groupId>top.bella</groupId>
+            <artifactId>openapi-spi</artifactId>
+            <version>${bella-openapi.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.codehaus.groovy</groupId>
+                    <artifactId>groovy-all</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>top.bella</groupId>
+            <artifactId>openai-service</artifactId>
+            <version>${bella-openai.version}</version>
+        </dependency>
+
+        <!-- Monitoring -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.mweirauch</groupId>
+            <artifactId>micrometer-jvm-extras</artifactId>
+            <version>${micrometer-jvm-extras.version}</version>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-inline</artifactId>
+            <version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy</artifactId>
+            <version>${byte-buddy.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy-agent</artifactId>
+            <version>${byte-buddy.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.cooder</groupId>
+            <artifactId>jooq-mate-generator</artifactId>
+            <version>2.1.0</version>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <!-- Dependency Management -->
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Cloud BOM -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            
+            <!-- Utility Libraries -->
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${guava.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-collections4</artifactId>
+                <version>4.5.0-M2</version>
+            </dependency>
+            
+            <!-- HTTP Client Libraries -->
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp</artifactId>
+                <version>4.12.0</version>
+            </dependency>
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp-sse</artifactId>
+                <version>4.12.0</version>
+            </dependency>
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>logging-interceptor</artifactId>
+                <version>4.12.0</version>
+            </dependency>
+            
+            <!-- Redis & Connection Pool -->
+            <dependency>
+                <groupId>redis.clients</groupId>
+                <artifactId>jedis</artifactId>
+                <version>${jedis.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-pool2</artifactId>
+                <version>${commons-pool2.version}</version>
+            </dependency>
+            
+            <!-- Logging Dependencies -->
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j</artifactId>
+                <version>2.17.1</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-core</artifactId>
+                <version>2.17.1</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-api</artifactId>
+                <version>2.17.1</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-slf4j-impl</artifactId>
+                <version>2.17.1</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-to-slf4j</artifactId>
+                <version>2.17.1</version>
+            </dependency>
+            
+            <!-- Third-party Services -->
+            <dependency>
+                <groupId>io.github.lambdua</groupId>
+                <artifactId>service</artifactId>
+                <version>0.21.2</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- Build -->
+    <build>
+        <plugins>
+            
+            <!-- Code Generation -->
+            <plugin>
+                <groupId>org.jooq</groupId>
+                <artifactId>jooq-codegen-maven</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <phase>none</phase>
+                    </execution>
+                </executions>
+                <configuration>
+                    <jdbc>
+                        <driver>com.mysql.cj.jdbc.Driver</driver>
+                        <url>jdbc:mysql://localhost:3306?useSSL=false</url>
+                        <user>bella</user>
+                        <password>bella123</password>
+                    </jdbc>
+                    <generator>
+                        <database>
+                            <name>org.jooq.meta.mysql.MySQLDatabase</name>
+                            <inputSchema>bella_queue_dev</inputSchema>
+                            <outputSchemaToDefault>true</outputSchemaToDefault>
+                            <includes>
+                                batch|queue_metadata|queue|queue_head|queue_sharding|instance|trace_task_sharding_mapping
+                            </includes>
+                            <unsignedTypes>false</unsignedTypes>
+                            <forcedTypes>
+                                <forcedType>
+                                    <name>INTEGER</name>
+                                    <includeExpression>.*</includeExpression>
+                                    <includeTypes>TINYINT\(.*\)</includeTypes>
+                                </forcedType>
+                            </forcedTypes>
+                        </database>
+                        <strategy>
+                            <name>org.jooq.codegen.DefaultGeneratorStrategy</name>
+                            <matchers>
+                                <tables>
+                                    <table>
+                                        <expression>instance</expression>
+                                        <daoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B_Dao</expression>
+                                        </daoClass>
+                                        <pojoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B</expression>
+                                        </pojoClass>
+                                    </table>
+                                    <table>
+                                        <expression>batch</expression>
+                                        <daoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B_Dao</expression>
+                                        </daoClass>
+                                        <pojoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B</expression>
+                                        </pojoClass>
+                                        <pojoImplements>com.ke.bella.batch.db.repo.Operator</pojoImplements>
+                                        <recordImplements>com.ke.bella.batch.db.repo.Operator</recordImplements>
+                                    </table>
+                                    <table>
+                                        <expression>queue_metadata</expression>
+                                        <daoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B_Dao</expression>
+                                        </daoClass>
+                                        <pojoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B</expression>
+                                        </pojoClass>
+                                        <pojoImplements>com.ke.bella.batch.db.repo.Operator</pojoImplements>
+                                        <recordImplements>com.ke.bella.batch.db.repo.Operator</recordImplements>
+                                    </table>
+                                    <table>
+                                        <expression>queue_sharding</expression>
+                                        <daoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B_Dao</expression>
+                                        </daoClass>
+                                        <pojoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B</expression>
+                                        </pojoClass>
+                                        <pojoImplements>com.ke.bella.batch.db.repo.Operator</pojoImplements>
+                                        <recordImplements>com.ke.bella.batch.db.repo.Operator</recordImplements>
+                                    </table>
+                                    <table>
+                                        <expression>queue</expression>
+                                        <daoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B_Dao</expression>
+                                        </daoClass>
+                                        <pojoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B</expression>
+                                        </pojoClass>
+                                        <pojoImplements>com.ke.bella.batch.db.repo.Operator</pojoImplements>
+                                        <recordImplements>com.ke.bella.batch.db.repo.Operator</recordImplements>
+                                    </table>
+                                    <table>
+                                        <expression>queue_head</expression>
+                                        <daoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B_Dao</expression>
+                                        </daoClass>
+                                        <pojoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B</expression>
+                                        </pojoClass>
+                                        <pojoImplements>com.ke.bella.batch.db.repo.Operator</pojoImplements>
+                                        <recordImplements>com.ke.bella.batch.db.repo.Operator</recordImplements>
+                                    </table>
+                                    <table>
+                                        <expression>trace_task_sharding_mapping</expression>
+                                        <daoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B_Dao</expression>
+                                        </daoClass>
+                                        <pojoClass>
+                                            <transform>PASCAL</transform>
+                                            <expression>$0_D_B</expression>
+                                        </pojoClass>
+                                    </table>
+                                </tables>
+                            </matchers>
+                        </strategy>
+                        <generate>
+                            <deprecated>false</deprecated>
+                            <records>true</records>
+                            <pojos>true</pojos>
+                            <daos>false</daos>
+                        </generate>
+                        <target>
+                            <packageName>com.ke.bella.batch</packageName>
+                            <directory>src/codegen/java</directory>
+                            <encoding>UTF-8</encoding>
+                        </target>
+                    </generator>
+                </configuration>
+            </plugin>
+
+            <!-- Build Helper -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>${build-helper-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>src/codegen/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Compiler -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${maven.compiler.source}</source>
+                    <target>${maven.compiler.target}</target>
+                    <encoding>${project.build.sourceEncoding}</encoding>
+                </configuration>
+            </plugin>
+
+            <!-- Spring Boot -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.ke.bella.batch.Application</mainClass>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Deploy -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <version>${maven-deploy-plugin.version}</version>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>
