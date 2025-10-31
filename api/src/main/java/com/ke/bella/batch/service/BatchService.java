@@ -217,6 +217,9 @@ public class BatchService {
         try {
             BatchDB batchDB = batchRepo.findBatchDB(batchId);
 
+            mergeFiles(batchDB);
+            batchRepo.updateFileIds(batchId, batchDB.getOutputFileId(), batchDB.getErrorFileId());
+
             if(BatchStatus.expired.name().equals(status)) {
                 batchRepo.expireBatch(batchId);
             } else if(BatchStatus.completed.name().equals(status)) {
@@ -225,8 +228,6 @@ public class BatchService {
                 doCancel(batchId);
             }
 
-            mergeFiles(batchDB);
-            batchRepo.updateFileIds(batchId, batchDB.getOutputFileId(), batchDB.getErrorFileId());
         } finally {
             batchCompleteCountUpdater.remove(batchId);
             FileUtils.removeAll(Configs.getBatchDir(batchId));
