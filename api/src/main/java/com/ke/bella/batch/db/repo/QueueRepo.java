@@ -491,7 +491,7 @@ public class QueueRepo implements BaseRepo {
 
     private int collectTasks(String shardingKey, long lastScannedId, int limit,
             List<QueueDB> allTasks, Map<String, List<Long>> tasksBySharding) {
-        List<QueueDB> tasks = pullTasksForUpdate(shardingKey, lastScannedId, limit);
+        List<QueueDB> tasks = pullTasks(shardingKey, lastScannedId, limit);
         if(!tasks.isEmpty()) {
             allTasks.addAll(tasks);
             tasksBySharding.put(shardingKey, tasks.stream().map(QueueDB::getId).collect(Collectors.toList()));
@@ -562,12 +562,11 @@ public class QueueRepo implements BaseRepo {
                 .orElse(null);
     }
 
-    public List<QueueDB> pullTasksForUpdate(String shardingKey, long lastScannedId, int limit) {
+    public List<QueueDB> pullTasks(String shardingKey, long lastScannedId, int limit) {
         return db(shardingKey).selectFrom(QUEUE)
                 .where(QUEUE.ID.gt(lastScannedId))
                 .orderBy(QUEUE.ID.asc())
                 .limit(limit)
-                .forUpdate()
                 .fetchInto(QueueDB.class);
     }
 
