@@ -246,6 +246,7 @@ public class RedisBlockingQueue implements BlockingQueue<Task> {
         }
     }
 
+
     @SuppressWarnings("unchecked")
     private Task dequeue() {
         try {
@@ -267,6 +268,22 @@ public class RedisBlockingQueue implements BlockingQueue<Task> {
             return parseTask(taskJson);
         } catch (Exception e) {
             throw new RuntimeException("Failed to dequeue task from Redis: " + e.getMessage(), e);
+        }
+    }
+
+    public Task getTaskMetadata(String taskId) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            String taskJson = jedis.get(taskMetadataKey + taskId);
+            if(taskJson == null) {
+                return null;
+            }
+            return parseTask(taskJson);
+        }
+    }
+
+    public void removeTaskMetadata(String taskId) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.del(taskMetadataKey + taskId);
         }
     }
 

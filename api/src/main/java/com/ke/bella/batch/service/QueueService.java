@@ -124,10 +124,10 @@ public class QueueService {
                 .responseMode(put.getResponseMode())
                 .build();
 
-        if(ResponseMode.isOfflineMode(put.getResponseMode())) {
+        if(QueueLevel.isOfflineQueue(put.getFullQueueName())) {
             String shardingKey = queueRepo.saveTask(task);
             updater.increase(shardingKey);
-        } else if(ResponseMode.isOnlineMode(put.getResponseMode())) {
+        } else if(QueueLevel.isOnlineQueue(put.getFullQueueName())) {
             getQueue(put.getFullQueueName()).add(task);
         } else {
             throw new IllegalArgumentException("Unsupported response mode: " + put.getResponseMode());
@@ -179,8 +179,9 @@ public class QueueService {
                 if((task.isExpire())) {
                     return true;
                 }
-                return task.getTraceId().startsWith(IDGenerator.BATCH_PREFIX) &&
-                        batchService.isCanceled(task.getTraceId());
+                return StringUtils.isNotBlank(task.getTraceId())
+                        && task.getTraceId().startsWith(IDGenerator.BATCH_PREFIX)
+                        && batchService.isCanceled(task.getTraceId());
             });
             return entry.getValue().isEmpty();
         });
@@ -189,6 +190,24 @@ public class QueueService {
     }
 
     public void complete(String taskId, Map<String, Object> result) {
+        int level = IDGenerator.parseLevel(taskId);
+        if(QueueLevel.isOnline(level)) {
+            QueueMetadataDB queueMeta = queueRepo.findMetadataById(IDGenerator.parseQueueId(taskId));
+            if(queueMeta == null) {
+                return;
+            }
+            FullQueueName fullQueueName = new FullQueueName(queueMeta.getQueue(), level);
+            RedisBlockingQueue queue = (RedisBlockingQueue) getQueue(fullQueueName.toString());
+            Task task = queue.getTaskMetadata(taskId);
+            if(task == null) {
+                log.warn("Task metadata not found for online taskId: {}", taskId);
+                return;
+            }
+            TaskExecutor.submit(() -> HttpUtils.postWithRetry(task.getCallbackUrl(), result));
+            queue.removeTaskMetadata(taskId);
+            return;
+        }
+
         QueueDB task = queueRepo.findTask(taskId);
         boolean completed = queueRepo.completeTask(task, result);
         if(!completed) {
@@ -199,11 +218,9 @@ public class QueueService {
         if(responseMode == ResponseMode.callback) {
             TaskExecutor.submit(() -> HttpUtils.postWithRetry(task.getCallbackUrl(), result));
         } else if(responseMode == ResponseMode.batch) {
-            TaskExecutor.submit(() -> {
-                bs.writeResult(task, result);
-            });
+            TaskExecutor.submit(() -> bs.writeResult(task, result));
         }
-        FullQueueName fullQueueName = new FullQueueName(task.getQueue(), IDGenerator.parseLevel(taskId));
+        FullQueueName fullQueueName = new FullQueueName(task.getQueue(), level);
         queueHeadUpdater.increaseCompletedCnt(fullQueueName.toString(), 1L);
     }
 

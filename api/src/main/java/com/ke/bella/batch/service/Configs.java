@@ -16,6 +16,9 @@ public class Configs {
             , BellaServerContextHolder.getIp()
             , BellaServerContextHolder.getPort());
 
+    public static int ONLINE_QUEUE_CAPACITY = 10000;
+    public static int OFFLINE_QUEUE_CAPACITY = 1000;
+
     public static String OPENAPI_HOST;
     public static String OPENAPI_CONSOLE_KEY;
 
@@ -57,6 +60,16 @@ public class Configs {
     @Value("${bella.queue.batch.file.path:/tmp/bella-queue/batch}")
     public void setBatchFileBasePath(String batchFileBasePath) {
         BATCH_FILE_BASE_PATH = batchFileBasePath;
+    }
+
+    @Value("${bella.queue.online.capacity:10000}")
+    public void setOnlineQueueCapacity(Integer onlineQueueCapacity) {
+        ONLINE_QUEUE_CAPACITY = onlineQueueCapacity;
+    }
+
+    @Value("${bella.queue.offline.capacity:1000}")
+    public void setOfflineQueueCapacity(Integer offlineQueueCapacity) {
+        OFFLINE_QUEUE_CAPACITY = offlineQueueCapacity;
     }
 
     public static Path getBatchBasePath() {
