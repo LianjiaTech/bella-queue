@@ -5,6 +5,7 @@ import com.google.common.cache.CacheBuilder;
 import com.ke.bella.batch.service.Configs;
 import com.ke.bella.openapi.BellaContext;
 import com.ke.bella.openapi.client.OpenapiClient;
+import com.ke.bella.openapi.metadata.Channel;
 import com.ke.bella.openapi.protocol.route.RouteResult;
 import com.ke.bella.openapi.server.OpenAiServiceFactory;
 import com.ke.bella.queue.QueueMode;
@@ -32,6 +33,9 @@ public class OpenapiUtils {
     static OpenAiServiceFactory openAiServiceFactory;
 
     private static final Cache<String, String> QUEUE_CACHE = CacheBuilder.newBuilder()
+            .expireAfterWrite(10, TimeUnit.MINUTES).maximumSize(1000).build();
+
+    private static final Cache<String, Channel> CHANNEL_CACHE = CacheBuilder.newBuilder()
             .expireAfterWrite(10, TimeUnit.MINUTES).maximumSize(1000).build();
 
     public synchronized static void initialize(OpenapiClient openApiClient, OpenAiServiceFactory openAiServiceFactory) {
@@ -63,6 +67,11 @@ public class OpenapiUtils {
                     .map(RouteResult::getQueueName)
                     .orElse(null);
         });
+    }
+
+    @SneakyThrows
+    public static Channel getChannelByQueue(String queueName) {
+        return CHANNEL_CACHE.get(queueName, () -> getInstance().getChannelByQueue(queueName));
     }
 
     private static final Charset FILE_CHARSET = StandardCharsets.UTF_8;

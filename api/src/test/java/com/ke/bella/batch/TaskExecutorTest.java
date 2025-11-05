@@ -57,8 +57,8 @@ public class TaskExecutorTest {
 
         assertTrue("Task should execute within timeout", latch.await(5, TimeUnit.SECONDS));
         assertTrue("Task should be executed", taskExecuted.get());
-        assertTrue("Thread name should start with bella-batch-",
-                executedThreadName.get().startsWith("bella-batch-"));
+        assertTrue("Thread name should start with bella-queue-",
+                executedThreadName.get().startsWith("bella-queue-"));
     }
 
     @Test

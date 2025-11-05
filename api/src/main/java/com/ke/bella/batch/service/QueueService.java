@@ -12,9 +12,13 @@ import com.ke.bella.batch.enums.TakeStrategy;
 import com.ke.bella.batch.tables.pojos.QueueDB;
 import com.ke.bella.batch.tables.pojos.QueueMetadataDB;
 import com.ke.bella.batch.utils.HttpUtils;
+import com.ke.bella.batch.utils.JsonUtils;
 import com.ke.bella.batch.utils.OpenapiUtils;
 import com.ke.bella.batch.utils.TimeUtils;
 import com.ke.bella.openapi.BellaContext;
+import com.ke.bella.openapi.EndpointProcessData;
+import com.ke.bella.openapi.apikey.ApikeyInfo;
+import com.ke.bella.openapi.metadata.Channel;
 import com.ke.bella.queue.TaskEvent;
 import com.theokanning.openai.queue.EventbusConfig;
 import com.theokanning.openai.queue.Put;
@@ -25,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.jodah.expiringmap.ExpirationListener;
 import net.jodah.expiringmap.ExpiringMap;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,8 +48,11 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import static com.ke.bella.batch.service.callback.BlockingCallback.BODY;
+
 @Service
 @Slf4j
+@SuppressWarnings("all")
 public class QueueService {
 
     @Resource
@@ -204,6 +212,7 @@ public class QueueService {
                 return;
             }
             TaskExecutor.submit(() -> HttpUtils.postWithRetry(task.getCallbackUrl(), result));
+            TaskExecutor.submitUsage(() -> reportUsage(task, result));
             queue.removeTaskMetadata(taskId);
             releaseSequentialLock(fullQueueName.toString(), taskId);
             return;
@@ -221,9 +230,45 @@ public class QueueService {
         } else if(responseMode == ResponseMode.batch) {
             TaskExecutor.submit(() -> bs.writeResult(task, result));
         }
+        TaskExecutor.submitUsage(() -> reportUsage(task, result));
+
         FullQueueName fullQueueName = new FullQueueName(task.getQueue(), level);
         queueHeadUpdater.increaseCompletedCnt(fullQueueName.toString(), 1L);
         releaseSequentialLock(fullQueueName.toString(), taskId);
+    }
+
+    private void reportUsage(QueueDB queueDB, Map<String, Object> result) {
+        reportUsage(queueRepo.parseTask(queueDB), result);
+    }
+
+    private void reportUsage(Task task, Map<String, Object> result) {
+        Channel channel = OpenapiUtils.getChannelByQueue(task.getQueue());
+        if(channel == null) {
+            return;
+        }
+
+        ApikeyInfo apikeyInfo = OpenapiUtils.getInstance().whoami(task.getAk());
+        boolean isBatch = StringUtils.startsWith(task.getTraceId(), IDGenerator.BATCH_PREFIX);
+        Map channelInfo = JsonUtils.fromJson(channel.getChannelInfo(), Map.class);
+        String encodingType = MapUtils.getString(channelInfo, "encodingType");
+
+        EndpointProcessData processData = EndpointProcessData.builder()
+                .endpoint(task.getEndpoint())
+                .akCode(apikeyInfo.getCode())
+                .apikey(apikeyInfo.getApikey())
+                .akSha(apikeyInfo.getAkSha())
+                .channelCode(channel.getChannelCode())
+                .priceInfo(channel.getPriceInfo())
+                .requestId(task.getTaskId())
+                .requestRaw(JsonUtils.toJson(task.getData()))
+                .responseRaw(JsonUtils.toJson(result.get(BODY)))
+                .batch(isBatch)
+                .innerLog(true)
+                .encodingType(encodingType)
+                .bellaTraceId(task.getTaskId())
+                .build();
+
+        OpenapiUtils.getInstance().log(processData);
     }
 
     private static final ExpiringMap<String, ITaskCallback> TASK_RUNS = ExpiringMap.builder()
@@ -320,4 +365,5 @@ public class QueueService {
             log.error("Failed to release lock: {}", lockKey, e);
         }
     }
+
 }

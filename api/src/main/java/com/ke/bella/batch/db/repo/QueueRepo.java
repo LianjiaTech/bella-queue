@@ -293,7 +293,7 @@ public class QueueRepo implements BaseRepo {
                 .fetchOneInto(QueueDB.class);
     }
 
-    private Task parseTask(QueueDB queueDB) {
+    public Task parseTask(QueueDB queueDB) {
         String taskId = queueDB.getTaskId();
 
         Task task = Task.builder()

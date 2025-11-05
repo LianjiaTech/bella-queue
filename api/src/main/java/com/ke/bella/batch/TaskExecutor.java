@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 public class TaskExecutor {
-    static ThreadFactory tf = new NamedThreadFactory("bella-batch-", true);
+    static ThreadFactory tf = new NamedThreadFactory("bella-queue-", true);
     static ScheduledExecutorService executor = Executors.newScheduledThreadPool(1000, tf);
 
     static ThreadFactory batchTf = new NamedThreadFactory("bella-batch-splitting-", true);
@@ -27,6 +27,9 @@ public class TaskExecutor {
     static ThreadFactory scheduledTf = new NamedThreadFactory("bella-batch-scheduled-", true);
     static ScheduledExecutorService scheduledExecutor = Executors.newScheduledThreadPool(100, scheduledTf);
 
+    static ThreadFactory usageTf = new NamedThreadFactory("bella-usage-scheduled-", true);
+    static ScheduledExecutorService usageExecutor = Executors.newScheduledThreadPool(50, usageTf);
+
     public static void scheduleAtFixedRate(Runnable r, int period) {
         int initialDelay = period + RandomUtils.nextInt(1, period);
         scheduledExecutor.scheduleAtFixedRate(new Task(r), initialDelay, period, TimeUnit.SECONDS);
@@ -34,6 +37,10 @@ public class TaskExecutor {
 
     public static void submit(Runnable r) {
         executor.submit(new Task(r));
+    }
+
+    public static void submitUsage(Runnable r) {
+        usageExecutor.submit(new Task(r));
     }
 
     public static void submitBatch(Runnable r) {
@@ -45,6 +52,8 @@ public class TaskExecutor {
 
         executor.shutdown();
         batchExecutor.shutdown();
+        scheduledExecutor.shutdown();
+        usageExecutor.shutdown();
 
         CompletableFuture<Boolean> executorFuture = CompletableFuture.supplyAsync(() -> {
             try {
@@ -56,6 +65,8 @@ public class TaskExecutor {
         });
 
         boolean batchExecutorTerminated = batchExecutor.awaitTermination(timeoutSeconds, TimeUnit.SECONDS);
+        boolean scheduledExecutorTerminated = scheduledExecutor.awaitTermination(timeoutSeconds, TimeUnit.SECONDS);
+        boolean usageExecutorTerminated = usageExecutor.awaitTermination(timeoutSeconds, TimeUnit.SECONDS);
 
         boolean executorTerminated;
         try {
@@ -75,9 +86,21 @@ public class TaskExecutor {
             batchExecutor.shutdownNow();
         }
 
-        log.info("TaskExecutor shutdown completed - executor: {}, batchExecutor: {}",
+        if(!scheduledExecutorTerminated) {
+            log.warn("Scheduled executor did not terminate gracefully, forcing shutdown");
+            scheduledExecutor.shutdownNow();
+        }
+
+        if(!usageExecutorTerminated) {
+            log.warn("Usage executor did not terminate gracefully, forcing shutdown");
+            usageExecutor.shutdownNow();
+        }
+
+        log.info("TaskExecutor shutdown completed - executor: {}, batchExecutor: {}, scheduledExecutor: {}, usageExecutor: {}",
                 executorTerminated ? "graceful" : "forced",
-                batchExecutorTerminated ? "graceful" : "forced");
+                batchExecutorTerminated ? "graceful" : "forced",
+                scheduledExecutorTerminated ? "graceful" : "forced",
+                usageExecutorTerminated ? "graceful" : "forced");
     }
 
     public static class Task implements Runnable {
