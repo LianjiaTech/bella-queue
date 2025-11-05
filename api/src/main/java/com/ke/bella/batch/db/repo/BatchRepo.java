@@ -12,6 +12,7 @@ import com.theokanning.openai.batch.Batch;
 import com.theokanning.openai.batch.BatchRequest;
 import com.theokanning.openai.batch.RequestCounts;
 import com.theokanning.openai.queue.Task;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
@@ -33,6 +34,7 @@ import static com.ke.bella.batch.utils.EncryptUtils.encrypt;
 
 @SuppressWarnings("all")
 @Component
+@Slf4j
 public class BatchRepo implements BaseRepo {
 
     private static final String REDIS_KEY_BATCH_CANCEL_STSTUS = "bella-batch:cancel:";
@@ -115,13 +117,16 @@ public class BatchRepo implements BaseRepo {
     }
 
     public void writeProgress(String batchId, int delta) {
-        db.update(BATCH)
+        int affectedRows = db.update(BATCH)
                 .set(BATCH.REQUEST_COUNTS_COMPLETED, BATCH.REQUEST_COUNTS_COMPLETED
                         .plus(delta))
                 .set(BATCH.MTIME, LocalDateTime.now())
                 .where(BATCH.BATCH_ID.eq(batchId))
                 .and(BATCH.STATUS.eq(BatchStatus.in_progress.name()))
                 .execute();
+        if(affectedRows == 0) {
+            log.warn("Failed to update progress for batch {}, possibly status changed", batchId);
+        }
     }
 
     public boolean completeBatch(String batchId) {
