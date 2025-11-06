@@ -7,8 +7,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Component
 @Slf4j
@@ -29,14 +31,23 @@ public class BatchCompleteCountUpdater {
             })
             .build();
 
+    private final ConcurrentHashMap<String, ReentrantLock> lockMap = new ConcurrentHashMap<>();
+
     public void remove(String batchId) {
         deltas.invalidate(batchId);
+        lockMap.remove(batchId);
     }
 
     public void increaseCompleteCount(String batchId, int delta) {
         try {
-            AtomicLong counter = deltas.get(batchId, () -> new AtomicLong(0));
-            counter.addAndGet(delta);
+            ReentrantLock lock = lockMap.computeIfAbsent(batchId, k -> new ReentrantLock());
+            lock.lock();
+            try {
+                AtomicLong counter = deltas.get(batchId, () -> new AtomicLong(0));
+                counter.addAndGet(delta);
+            } finally {
+                lock.unlock();
+            }
         } catch (ExecutionException e) {
             throw new RuntimeException(e);
         }
@@ -47,13 +58,19 @@ public class BatchCompleteCountUpdater {
     }
 
     private void flushCounter(String batchId, AtomicLong counter) {
-        long delta = counter.get();
+        ReentrantLock lock = lockMap.computeIfAbsent(batchId, k -> new ReentrantLock());
+        lock.lock();
+        try {
+            long delta = counter.get();
 
-        if(delta > 0) {
-            batchRepo.writeProgress(batchId, (int) delta);
-            counter.addAndGet(-delta);
+            if(delta > 0) {
+                batchRepo.writeProgress(batchId, (int) delta);
+                counter.addAndGet(-delta);
 
-            bs.stat(batchId);
+                bs.stat(batchId);
+            }
+        } finally {
+            lock.unlock();
         }
     }
 }

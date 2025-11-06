@@ -9,6 +9,11 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+
+import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -168,5 +173,179 @@ public class BatchCompleteCountUpdaterTest {
         // Should have accumulated all increments
         verify(batchRepo).writeProgress(TEST_BATCH_ID, numThreads * incrementsPerThread);
         verify(batchService).stat(TEST_BATCH_ID);
+    }
+
+    @Test
+    public void testConcurrentAccessWithExpectedActualComparison() throws InterruptedException {
+        int numThreads = 20;
+        int incrementsPerThread = 50;
+        int deltaPerIncrement = 2;
+        
+        // Expected total
+        int expectedTotal = numThreads * incrementsPerThread * deltaPerIncrement;
+        
+        ExecutorService executor = Executors.newFixedThreadPool(numThreads);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch completeLatch = new CountDownLatch(numThreads);
+        AtomicInteger actualCallCount = new AtomicInteger(0);
+        
+        // Submit all tasks
+        for (int i = 0; i < numThreads; i++) {
+            executor.submit(() -> {
+                try {
+                    startLatch.await(); // Wait for all threads to be ready
+                    for (int j = 0; j < incrementsPerThread; j++) {
+                        updater.increaseCompleteCount(TEST_BATCH_ID, deltaPerIncrement);
+                        actualCallCount.incrementAndGet();
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    completeLatch.countDown();
+                }
+            });
+        }
+        
+        // Start all threads simultaneously
+        startLatch.countDown();
+        
+        // Wait for completion with timeout
+        boolean completed = completeLatch.await(30, TimeUnit.SECONDS);
+        assertTrue("All threads should complete within timeout", completed);
+        
+        executor.shutdown();
+        
+        // Flush to trigger database write
+        updater.flush();
+        
+        // Verify expected vs actual
+        int expectedCallCount = numThreads * incrementsPerThread;
+        assertEquals("All increment calls should be made", expectedCallCount, actualCallCount.get());
+        
+        // Verify the total written to database matches expected
+        verify(batchRepo).writeProgress(TEST_BATCH_ID, expectedTotal);
+        verify(batchService).stat(TEST_BATCH_ID);
+    }
+
+    @Test
+    public void testConcurrentAccessMultipleBatches() throws InterruptedException {
+        String[] batchIds = {"batch-1", "batch-2", "batch-3"};
+        int numThreadsPerBatch = 5;
+        int incrementsPerThread = 20;
+        int deltaPerIncrement = 3;
+        
+        // Expected values for each batch
+        int expectedPerBatch = numThreadsPerBatch * incrementsPerThread * deltaPerIncrement;
+        
+        ExecutorService executor = Executors.newFixedThreadPool(batchIds.length * numThreadsPerBatch);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch completeLatch = new CountDownLatch(batchIds.length * numThreadsPerBatch);
+        
+        // Submit tasks for each batch
+        for (String batchId : batchIds) {
+            for (int i = 0; i < numThreadsPerBatch; i++) {
+                executor.submit(() -> {
+                    try {
+                        startLatch.await();
+                        for (int j = 0; j < incrementsPerThread; j++) {
+                            updater.increaseCompleteCount(batchId, deltaPerIncrement);
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        completeLatch.countDown();
+                    }
+                });
+            }
+        }
+        
+        startLatch.countDown();
+        assertTrue("All threads should complete", completeLatch.await(30, TimeUnit.SECONDS));
+        executor.shutdown();
+        
+        updater.flush();
+        
+        // Verify each batch got the expected total
+        for (String batchId : batchIds) {
+            verify(batchRepo).writeProgress(batchId, expectedPerBatch);
+            verify(batchService).stat(batchId);
+        }
+    }
+
+    @Test
+    public void testConcurrentIncrementAndFlush() throws InterruptedException {
+        int numIncrementThreads = 10;
+        int numFlushThreads = 3;
+        int incrementsPerThread = 100;
+        int testDurationMs = 5000;
+        
+        AtomicLong totalIncremented = new AtomicLong(0);
+        AtomicLong totalFlushed = new AtomicLong(0);
+        
+        // Mock to capture flushed values
+        doAnswer(invocation -> {
+            int delta = invocation.getArgument(1);
+            totalFlushed.addAndGet(delta);
+            return null;
+        }).when(batchRepo).writeProgress(eq(TEST_BATCH_ID), anyInt());
+        
+        ExecutorService executor = Executors.newFixedThreadPool(numIncrementThreads + numFlushThreads);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        AtomicInteger runningThreads = new AtomicInteger(numIncrementThreads + numFlushThreads);
+        
+        // Increment threads
+        for (int i = 0; i < numIncrementThreads; i++) {
+            executor.submit(() -> {
+                try {
+                    startLatch.await();
+                    long endTime = System.currentTimeMillis() + testDurationMs;
+                    while (System.currentTimeMillis() < endTime) {
+                        updater.increaseCompleteCount(TEST_BATCH_ID, 1);
+                        totalIncremented.incrementAndGet();
+                        Thread.sleep(10);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    runningThreads.decrementAndGet();
+                }
+            });
+        }
+        
+        // Flush threads
+        for (int i = 0; i < numFlushThreads; i++) {
+            executor.submit(() -> {
+                try {
+                    startLatch.await();
+                    long endTime = System.currentTimeMillis() + testDurationMs;
+                    while (System.currentTimeMillis() < endTime) {
+                        updater.flush();
+                        Thread.sleep(100);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    runningThreads.decrementAndGet();
+                }
+            });
+        }
+        
+        startLatch.countDown();
+        
+        // Wait for all threads to complete
+        while (runningThreads.get() > 0) {
+            Thread.sleep(100);
+        }
+        
+        executor.shutdown();
+        
+        // Final flush to ensure all increments are processed
+        updater.flush();
+        
+        // Verify that total flushed equals total incremented
+        assertEquals("Total flushed should equal total incremented", 
+                     totalIncremented.get(), totalFlushed.get());
+        
+        assertTrue("Should have made some increments", totalIncremented.get() > 0);
     }
 }
