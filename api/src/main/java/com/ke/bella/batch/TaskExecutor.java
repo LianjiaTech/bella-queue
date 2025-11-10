@@ -102,6 +102,8 @@ public class TaskExecutor {
                 }
                 try {
                     r.run();
+                } catch (Exception e) {
+                    log.error("Scheduled task execution failed", e);
                 } finally {
                     BellaContext.clearAll();
                     MDC.clear();
