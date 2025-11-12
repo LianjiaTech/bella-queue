@@ -205,6 +205,7 @@ public class QueueService {
             }
             TaskExecutor.submit(() -> HttpUtils.postWithRetry(task.getCallbackUrl(), result));
             queue.removeTaskMetadata(taskId);
+            releaseSequentialLock(fullQueueName.toString(), taskId);
             return;
         }
 
@@ -222,6 +223,7 @@ public class QueueService {
         }
         FullQueueName fullQueueName = new FullQueueName(task.getQueue(), level);
         queueHeadUpdater.increaseCompletedCnt(fullQueueName.toString(), 1L);
+        releaseSequentialLock(fullQueueName.toString(), taskId);
     }
 
     private static final ExpiringMap<String, ITaskCallback> TASK_RUNS = ExpiringMap.builder()
@@ -270,6 +272,19 @@ public class QueueService {
         eventbusConfig.setUrl(redisUrl.toString());
         eventbusConfig.setTopic(redisMesh.getPrivateTopicPrefix());
         return eventbusConfig;
+    }
+
+    private void releaseSequentialLock(String queueName, String taskId) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            String runningKey = "sequential:running:" + queueName;
+            String runningTaskId = jedis.get(runningKey);
+
+            if(taskId.equals(runningTaskId)) {
+                jedis.del(runningKey);
+            }
+        } catch (Exception e) {
+            log.error("Failed to release sequential lock for queue: {}, task: {}", queueName, taskId, e);
+        }
     }
 
     private void loadTasks(String fullQueueName) {
