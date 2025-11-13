@@ -36,6 +36,8 @@ public class Configs {
     public static int BATCH_THREAD_SIZE = 5;
 
     public static String FILE_API_PURPOSE = "batch";
+    
+    public static final String BATCH_SPLIT_QUEUE_NAME = "bella_batch_split_queue";
 
     @Value("${bella.openapi.host}")
     public void setOpenapiHost(String openapiHost) {

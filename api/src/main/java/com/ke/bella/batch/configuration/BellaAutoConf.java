@@ -5,6 +5,7 @@ import com.ke.bella.batch.TaskExecutor;
 import com.ke.bella.batch.db.IDGenerator;
 import com.ke.bella.batch.db.repo.InstanceRepo;
 import com.ke.bella.batch.service.BatchCompleteCountUpdater;
+import com.ke.bella.batch.service.BatchService;
 import com.ke.bella.batch.service.QueueHeadUpdater;
 import com.ke.bella.batch.service.QueueTaskCountUpdater;
 import com.ke.bella.batch.utils.OpenapiUtils;
@@ -12,6 +13,8 @@ import com.ke.bella.openapi.client.OpenapiClient;
 import com.ke.bella.openapi.server.BellaServerContextHolder;
 import com.ke.bella.openapi.server.BellaService;
 import com.ke.bella.openapi.server.OpenAiServiceFactory;
+import com.ke.bella.openapi.server.OpenapiProperties;
+import com.theokanning.openai.service.OpenAiService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,6 +51,8 @@ public class BellaAutoConf {
     @Autowired
     @Lazy
     private OpenAiServiceFactory openAiServiceFactory;
+    @Resource
+    private BatchService bs;
 
     @PostConstruct
     public void postConstruct() {
@@ -73,6 +78,16 @@ public class BellaAutoConf {
         mesh.start();
         this.redisMesh = mesh;
         return mesh;
+    }
+
+    @Bean
+    public OpenAiService openAiService(OpenapiProperties openapiProperties) {
+        return openAiServiceFactory.create(openapiProperties.getServiceAk());
+    }
+
+    @Bean
+    public com.ke.bella.queue.worker.TaskExecutor workerTaskExecutor() {
+        return task -> bs.split(task);
     }
 
     @PreDestroy

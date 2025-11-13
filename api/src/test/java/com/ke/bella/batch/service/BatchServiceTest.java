@@ -9,8 +9,13 @@ import com.ke.bella.batch.tables.pojos.QueueDB;
 import com.ke.bella.batch.tables.pojos.QueueMetadataDB;
 import com.ke.bella.batch.utils.FileUtils;
 import com.ke.bella.batch.utils.OpenapiUtils;
+import com.ke.bella.batch.db.IDGenerator;
 import com.ke.bella.openapi.BellaContext;
+import com.ke.bella.openapi.Operator;
 import com.ke.bella.openapi.apikey.ApikeyInfo;
+import com.ke.bella.openapi.client.OpenapiClient;
+import com.ke.bella.queue.TaskWrapper;
+import com.theokanning.openai.queue.Task;
 import com.theokanning.openai.batch.Batch;
 import com.theokanning.openai.batch.BatchRequest;
 import com.theokanning.openai.batch.RequestCounts;
@@ -46,6 +51,9 @@ public class BatchServiceTest {
 
     @Mock
     private BatchCompleteCountUpdater batchCompleteCountUpdater;
+
+    @Mock 
+    private QueueService queueService;
 
     @InjectMocks
     private BatchService batchService;
@@ -94,23 +102,29 @@ public class BatchServiceTest {
 
     @Test
     public void testCreateBatchWithQueueHeader() {
-        when(queueRepo.findMetadataByName("specified-queue")).thenReturn(queueMetadata);
-        when(batchRepo.saveBatch(any(BatchRequest.class), anyString())).thenReturn(batchDetail);
+        try (MockedStatic<IDGenerator> mockedIDGenerator = mockStatic(IDGenerator.class)) {
+            mockedIDGenerator.when(() -> IDGenerator.newQueueBatchId(anyLong(), anyInt())).thenReturn("batch123");
+            
+            when(queueRepo.findMetadataByName("specified-queue")).thenReturn(queueMetadata);
+            when(batchRepo.saveBatch(any(BatchRequest.class), anyString())).thenReturn(batchDetail);
 
-        Batch result = batchService.create(createRequest, "specified-queue");
+            Batch result = batchService.create(createRequest, "specified-queue");
 
-        assertNotNull(result);
-        assertEquals("batch123", result.getId());
-        verify(batchRepo).saveBatch(eq(createRequest), anyString());
-        verify(queueRepo).findMetadataByName("specified-queue");
-        verify(queueRepo, never()).findMetadataByName("test-queue");
+            assertNotNull(result);
+            assertEquals("batch123", result.getId());
+            verify(batchRepo).saveBatch(eq(createRequest), anyString());
+            verify(queueRepo).findMetadataByName("specified-queue");
+            verify(queueRepo, never()).findMetadataByName("test-queue");
+        }
     }
 
     @Test
     public void testCreateBatch() {
-        try (MockedStatic<OpenapiUtils> mockedOpenapiUtils = mockStatic(OpenapiUtils.class)) {
+        try (MockedStatic<OpenapiUtils> mockedOpenapiUtils = mockStatic(OpenapiUtils.class);
+             MockedStatic<IDGenerator> mockedIDGenerator = mockStatic(IDGenerator.class)) {
             mockedOpenapiUtils.when(() -> OpenapiUtils.peekFirstLine(anyString(), anyString(), any()))
                     .thenReturn("test-queue");
+            mockedIDGenerator.when(() -> IDGenerator.newQueueBatchId(anyLong(), anyInt())).thenReturn("batch123");
 
             when(queueRepo.findMetadataByName("test-queue")).thenReturn(queueMetadata);
             when(batchRepo.saveBatch(any(BatchRequest.class), anyString())).thenReturn(batchDetail);
@@ -140,12 +154,45 @@ public class BatchServiceTest {
     @Test
     public void testSplitBatchWhenSetInprogressFails() {
         String batchId = "batch123";
+        
+        // Create mock TaskWrapper
+        Task mockTask = mock(Task.class);
+        TaskWrapper mockTaskWrapper = mock(TaskWrapper.class);
+        Map<String, Object> taskData = new HashMap<>();
+        taskData.put("batchId", batchId);
+        
+        // Create mock BatchDB
+        BatchDB mockBatchDB = mock(BatchDB.class);
+        when(mockBatchDB.getAk()).thenReturn("test-apikey");
+        
+        // Create ApikeyInfo using builder
+        ApikeyInfo mockApikeyInfo = ApikeyInfo.builder()
+                .userId(123L)
+                .ownerName("testUser")
+                .apikey("test-apikey")
+                .build();
+        
+        when(mockTaskWrapper.getTask()).thenReturn(mockTask);
+        when(mockTask.getData()).thenReturn(taskData);
+        when(batchRepo.findBatchDB(batchId)).thenReturn(mockBatchDB);
         when(batchRepo.setInprogress(batchId)).thenReturn(false);
-
-        batchService.split(batchId, queueMetadata);
-
-        verify(batchRepo).setInprogress(batchId);
-        verify(batchRepo, never()).findBatchDB(anyString());
+        
+        try (MockedStatic<OpenapiUtils> mockedOpenapiUtils = mockStatic(OpenapiUtils.class);
+             MockedStatic<IDGenerator> mockedIDGenerator = mockStatic(IDGenerator.class)) {
+            
+            OpenapiClient mockOpenapiClient = mock(OpenapiClient.class);
+            mockedOpenapiUtils.when(OpenapiUtils::getInstance).thenReturn(mockOpenapiClient);
+            when(mockOpenapiClient.whoami(anyString())).thenReturn(mockApikeyInfo);
+            
+            mockedIDGenerator.when(() -> IDGenerator.parseQueueIdFromBatchId(batchId)).thenReturn(1L);
+            when(queueRepo.findMetadataById(1L)).thenReturn(queueMetadata);
+            
+            batchService.split(mockTaskWrapper);
+            
+            verify(batchRepo).findBatchDB(batchId);
+            verify(batchRepo).setInprogress(batchId);
+            verify(mockTaskWrapper).markComplete(any());
+        }
     }
 
     @Test

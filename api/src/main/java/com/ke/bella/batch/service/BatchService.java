@@ -1,5 +1,6 @@
 package com.ke.bella.batch.service;
 
+import com.google.common.collect.Maps;
 import com.ke.bella.batch.RedisMesh;
 import com.ke.bella.batch.TaskExecutor;
 import com.ke.bella.batch.db.IDGenerator;
@@ -18,9 +19,12 @@ import com.ke.bella.batch.utils.JsonUtils;
 import com.ke.bella.batch.utils.OpenapiUtils;
 import com.ke.bella.batch.utils.TimeUtils;
 import com.ke.bella.openapi.BellaContext;
+import com.ke.bella.openapi.Operator;
 import com.ke.bella.openapi.apikey.ApikeyInfo;
+import com.ke.bella.queue.TaskWrapper;
 import com.theokanning.openai.batch.Batch;
 import com.theokanning.openai.batch.BatchRequest;
+import com.theokanning.openai.queue.Put;
 import com.theokanning.openai.queue.Task;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -99,23 +103,18 @@ public class BatchService {
     }
 
     public Batch create(BatchRequest create, String queue) {
-        if(SPLITTING_COUNTER.get() >= maxSplittingBatches) {
-            throw new IllegalStateException("Too many batches are being splitting.");
-        }
-
         QueueMetadataDB queueMeta = getQueueMeta(create.getEndpoint(), create.getInputFileId(), queue);
         String batchId = IDGenerator.newQueueBatchId(queueMeta.getId(), QueueLevel.L1.getLevel());
         Batch batch = batchRepo.saveBatch(create, batchId);
 
-        SPLITTING_COUNTER.incrementAndGet();
-        TaskExecutor.submitBatch(() -> {
-            try {
-                split(batchId, queueMeta);
-            } finally {
-                SPLITTING_COUNTER.decrementAndGet();
-            }
-        });
-
+        queueService.put(Put.builder()
+                .endpoint(StringUtils.EMPTY)
+                .level(QueueLevel.L1.getLevel())
+                .queue(Configs.BATCH_SPLIT_QUEUE_NAME)
+                .callbackUrl(StringUtils.EMPTY)
+                .traceId(batchId)
+                .data(Map.of("batchId", batchId))
+                .build());
         return batch;
     }
 
@@ -143,20 +142,31 @@ public class BatchService {
         return isCancelled;
     }
 
-    public void split(String batchId, QueueMetadataDB queueMeta) {
+    public void split(TaskWrapper task) {
+        String batchId = MapUtils.getString(task.getTask().getData(), "batchId");
+        Map<String, Object> result = Maps.newHashMap();
         try {
+            Long queueId = IDGenerator.parseQueueIdFromBatchId(batchId);
+            BatchDB batch = batchRepo.findBatchDB(batchId);
+
+            ApikeyInfo apikeyInfo = OpenapiUtils.getInstance().whoami(batch.getAk());
+            BellaContext.setApikey(ApikeyInfo.builder().apikey(batch.getAk()).build());
+            BellaContext.setOperator(Operator.builder()
+                    .userId(apikeyInfo.getUserId())
+                    .userName(apikeyInfo.getOwnerName())
+                    .build());
+
+            QueueMetadataDB queueMeta = queueRepo.findMetadataById(queueId);
             boolean setResult = batchRepo.setInprogress(batchId);
             if(!setResult) {
                 return;
             }
 
-            BatchDB batch = batchRepo.findBatchDB(batchId);
             Path file = Configs.getBatchInputFile(batchId);
             if(Files.notExists(file)) {
                 OpenapiUtils.download(batch.getInputFileId(), file);
             }
 
-            BellaContext.setApikey(ApikeyInfo.builder().apikey(batch.getAk()).build());
             doSplit(batch, file, queueMeta);
 
             // if errors equal total requests, set batch as completed
@@ -164,11 +174,14 @@ public class BatchService {
             if(batchDetail.isCompleted()) {
                 doFinalize(batchId, BatchStatus.completed.name());
             }
+            result.put("success", "done");
         } catch (Exception e) {
-            log.error("Failed to split batch: {}", batchId, e);
+            log.error("Failed to split batch batchId: {}", batchId, e);
             batchRepo.setFailed(batchId);
+            result.put("error", e.getMessage());
         } finally {
             BellaContext.clearAll();
+            task.markComplete(result);
         }
     }
 
