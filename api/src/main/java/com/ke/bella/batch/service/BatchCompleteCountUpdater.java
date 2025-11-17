@@ -7,10 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReentrantLock;
 
 @Component
 @Slf4j
@@ -31,23 +29,14 @@ public class BatchCompleteCountUpdater {
             })
             .build();
 
-    private final ConcurrentHashMap<String, ReentrantLock> lockMap = new ConcurrentHashMap<>();
-
     public void remove(String batchId) {
         deltas.invalidate(batchId);
-        lockMap.remove(batchId);
     }
 
     public void increaseCompleteCount(String batchId, int delta) {
         try {
-            ReentrantLock lock = lockMap.computeIfAbsent(batchId, k -> new ReentrantLock());
-            lock.lock();
-            try {
-                AtomicLong counter = deltas.get(batchId, () -> new AtomicLong(0));
-                counter.addAndGet(delta);
-            } finally {
-                lock.unlock();
-            }
+            AtomicLong counter = deltas.get(batchId, () -> new AtomicLong(0));
+            counter.addAndGet(delta);
         } catch (ExecutionException e) {
             throw new RuntimeException(e);
         }
@@ -58,19 +47,13 @@ public class BatchCompleteCountUpdater {
     }
 
     private void flushCounter(String batchId, AtomicLong counter) {
-        ReentrantLock lock = lockMap.computeIfAbsent(batchId, k -> new ReentrantLock());
-        lock.lock();
-        try {
-            long delta = counter.get();
+        long delta = counter.get();
 
-            if(delta > 0) {
-                batchRepo.writeProgress(batchId, (int) delta);
-                counter.addAndGet(-delta);
+        if(delta > 0) {
+            batchRepo.writeProgress(batchId, (int) delta);
+            counter.addAndGet(-delta);
 
-                bs.stat(batchId);
-            }
-        } finally {
-            lock.unlock();
+            bs.stat(batchId);
         }
     }
 }

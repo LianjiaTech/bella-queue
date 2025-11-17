@@ -86,9 +86,7 @@ public class BatchService {
         }, 10 * 60);
 
         TaskExecutor.scheduleAtFixedRate(() -> {
-            log.info("Flushing batch complete counts...");
             batchCompleteCountUpdater.flush();
-            log.info("Finished flushing batch complete counts.");
         }, 5);
     }
 
