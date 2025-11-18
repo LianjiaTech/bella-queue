@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -35,7 +36,7 @@ public class OpenapiUtils {
     private static final Cache<String, String> QUEUE_CACHE = CacheBuilder.newBuilder()
             .expireAfterWrite(10, TimeUnit.MINUTES).maximumSize(1000).build();
 
-    private static final Cache<String, Channel> CHANNEL_CACHE = CacheBuilder.newBuilder()
+    private static final Cache<String, Optional<Channel>> CHANNEL_CACHE = CacheBuilder.newBuilder()
             .expireAfterWrite(10, TimeUnit.MINUTES).maximumSize(1000).build();
 
     public synchronized static void initialize(OpenapiClient openApiClient, OpenAiServiceFactory openAiServiceFactory) {
@@ -69,9 +70,20 @@ public class OpenapiUtils {
         });
     }
 
-    @SneakyThrows
     public static Channel getChannelByQueue(String queueName) {
-        return CHANNEL_CACHE.get(queueName, () -> getInstance().getChannelByQueue(queueName));
+        Optional<Channel> cached = CHANNEL_CACHE.getIfPresent(queueName);
+        if(Objects.nonNull(cached)) {
+            return cached.orElse(null);
+        }
+
+        try {
+            Channel channel = getInstance().getChannelByQueue(queueName);
+            CHANNEL_CACHE.put(queueName, Optional.ofNullable(channel));
+            return channel;
+        } catch (Exception e) {
+            log.warn("Failed to get channel for queue: {}", queueName, e);
+            return null;
+        }
     }
 
     private static final Charset FILE_CHARSET = StandardCharsets.UTF_8;

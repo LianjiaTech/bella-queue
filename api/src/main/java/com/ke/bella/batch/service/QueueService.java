@@ -268,7 +268,11 @@ public class QueueService {
                 .bellaTraceId(task.getTaskId())
                 .build();
 
-        OpenapiUtils.getInstance().log(processData);
+        try {
+            OpenapiUtils.getInstance().log(processData);
+        } catch (Exception e) {
+            log.error("Failed to report usage for taskId: {}", task.getTaskId(), e);
+        }
     }
 
     private static final ExpiringMap<String, ITaskCallback> TASK_RUNS = ExpiringMap.builder()
