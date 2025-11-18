@@ -73,6 +73,8 @@ requirements.
     - `round_robin`: Round-robin scheduling, alternately pulls tasks from multiple queues, evenly distributes task load
     - `active_passive`: Active-passive mode, prioritizes pulling tasks from primary queue, pulls from backup queue when
       primary queue is empty
+    - `sequential`: Global sequential mode, ensures only one task runs at a time per queue, guaranteeing global
+      execution order
 
 - **Queue Management Capabilities**:
     - **Priority Support**: Supports 0-N level queue priorities, smaller values have higher priority (0 for online, 1+
@@ -81,22 +83,22 @@ requirements.
 
 ## ✨ Core Advantages
 
-| Capability                         | Description                                                                                                                                                |
-|------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **☕ Java-Friendly**                | Backend built entirely on Java technology stack, facilitating rapid integration with Java's active ecosystem, fully utilizing existing technical expertise |
-| **🚀 High-Performance Processing** | Efficient queue implementation based on Redis + Lua scripts, supporting ten-thousand-level concurrency                                                     |
-| **🔧 OpenAI Compatible**           | 100% compatible with OpenAI Batch API standards, seamless migration of existing applications                                                               |
-| **🔄 Multiple Response Modes**     | Task API supports callback, blocking, streaming three response modes, meeting various scenario requirements from quick response to long-running tasks      |
-| **🎯 Intelligent Scheduling**      | Queue supports FIFO, round-robin, active-passive three scheduling strategies, 0-N level priority queues, intelligent task distribution and load balancing  |
+| Capability                         | Description                                                                                                                                                          |
+|------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **☕ Java-Friendly**                | Backend built entirely on Java technology stack, facilitating rapid integration with Java's active ecosystem, fully utilizing existing technical expertise           |
+| **🚀 High-Performance Processing** | Efficient queue implementation based on Redis + Lua scripts, supporting ten-thousand-level concurrency                                                               |
+| **🔧 OpenAI Compatible**           | 100% compatible with OpenAI Batch API standards, seamless migration of existing applications                                                                         |
+| **🔄 Multiple Response Modes**     | Task API supports callback, blocking, streaming three response modes, meeting various scenario requirements from quick response to long-running tasks                |
+| **🎯 Intelligent Scheduling**      | Queue supports FIFO, round-robin, active-passive, sequential four scheduling strategies, 0-N level priority queues, intelligent task distribution and load balancing |
 
 ## 📍 Quick Start
 
 ### Usage Methods
 
-| Deployment Method             | Description                                                                                                                                                                                                                                              |
-|-------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Deployment Method             | Description                                                                                                                                                                                                                                       |
+|-------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **🐳 Docker Deployment**      | Recommended for quick deployment using Docker, no complex configuration needed, one-click startup of complete service stack (including MySQL, Redis, API).<br/>For detailed steps, please refer to [Deployment Guide](./api/deploy/README_EN.md). |
-| **💻 Source Code Deployment** | Build and deploy from source code in your own environment, full control over configuration and data.<br/>Suitable for scenarios requiring custom configuration or secondary development.                                                                 |
+| **💻 Source Code Deployment** | Build and deploy from source code in your own environment, full control over configuration and data.<br/>Suitable for scenarios requiring custom configuration or secondary development.                                                          |
 
 ### Quick Deployment
 
