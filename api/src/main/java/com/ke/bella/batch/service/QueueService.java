@@ -12,9 +12,13 @@ import com.ke.bella.batch.enums.TakeStrategy;
 import com.ke.bella.batch.tables.pojos.QueueDB;
 import com.ke.bella.batch.tables.pojos.QueueMetadataDB;
 import com.ke.bella.batch.utils.HttpUtils;
+import com.ke.bella.batch.utils.JsonUtils;
 import com.ke.bella.batch.utils.OpenapiUtils;
 import com.ke.bella.batch.utils.TimeUtils;
 import com.ke.bella.openapi.BellaContext;
+import com.ke.bella.openapi.EndpointProcessData;
+import com.ke.bella.openapi.apikey.ApikeyInfo;
+import com.ke.bella.openapi.metadata.Channel;
 import com.ke.bella.queue.TaskEvent;
 import com.theokanning.openai.queue.EventbusConfig;
 import com.theokanning.openai.queue.Put;
@@ -25,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.jodah.expiringmap.ExpirationListener;
 import net.jodah.expiringmap.ExpiringMap;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,8 +48,11 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import static com.ke.bella.batch.service.callback.BlockingCallback.BODY;
+
 @Service
 @Slf4j
+@SuppressWarnings("all")
 public class QueueService {
 
     @Resource
@@ -124,10 +132,10 @@ public class QueueService {
                 .responseMode(put.getResponseMode())
                 .build();
 
-        if(ResponseMode.isOfflineMode(put.getResponseMode())) {
+        if(QueueLevel.isOfflineQueue(put.getFullQueueName())) {
             String shardingKey = queueRepo.saveTask(task);
             updater.increase(shardingKey);
-        } else if(ResponseMode.isOnlineMode(put.getResponseMode())) {
+        } else if(QueueLevel.isOnlineQueue(put.getFullQueueName())) {
             getQueue(put.getFullQueueName()).add(task);
         } else {
             throw new IllegalArgumentException("Unsupported response mode: " + put.getResponseMode());
@@ -179,8 +187,9 @@ public class QueueService {
                 if((task.isExpire())) {
                     return true;
                 }
-                return task.getTraceId().startsWith(IDGenerator.BATCH_PREFIX) &&
-                        batchService.isCanceled(task.getTraceId());
+                return StringUtils.isNotBlank(task.getTraceId())
+                        && task.getTraceId().startsWith(IDGenerator.BATCH_PREFIX)
+                        && batchService.isCanceled(task.getTraceId());
             });
             return entry.getValue().isEmpty();
         });
@@ -189,6 +198,26 @@ public class QueueService {
     }
 
     public void complete(String taskId, Map<String, Object> result) {
+        int level = IDGenerator.parseLevel(taskId);
+        if(QueueLevel.isOnline(level)) {
+            QueueMetadataDB queueMeta = queueRepo.findMetadataById(IDGenerator.parseQueueId(taskId));
+            if(queueMeta == null) {
+                return;
+            }
+            FullQueueName fullQueueName = new FullQueueName(queueMeta.getQueue(), level);
+            RedisBlockingQueue queue = (RedisBlockingQueue) getQueue(fullQueueName.toString());
+            Task task = queue.getTaskMetadata(taskId);
+            if(task == null) {
+                log.warn("Task metadata not found for online taskId: {}", taskId);
+                return;
+            }
+            TaskExecutor.submit(() -> HttpUtils.postWithRetry(task.getCallbackUrl(), result));
+            TaskExecutor.submitUsage(() -> reportUsage(task, result));
+            queue.removeTaskMetadata(taskId);
+            releaseSequentialLock(fullQueueName.toString(), taskId);
+            return;
+        }
+
         QueueDB task = queueRepo.findTask(taskId);
         boolean completed = queueRepo.completeTask(task, result);
         if(!completed) {
@@ -199,12 +228,51 @@ public class QueueService {
         if(responseMode == ResponseMode.callback) {
             TaskExecutor.submit(() -> HttpUtils.postWithRetry(task.getCallbackUrl(), result));
         } else if(responseMode == ResponseMode.batch) {
-            TaskExecutor.submit(() -> {
-                bs.writeResult(task, result);
-            });
+            TaskExecutor.submit(() -> bs.writeResult(task, result));
         }
-        FullQueueName fullQueueName = new FullQueueName(task.getQueue(), IDGenerator.parseLevel(taskId));
+        TaskExecutor.submitUsage(() -> reportUsage(task, result));
+
+        FullQueueName fullQueueName = new FullQueueName(task.getQueue(), level);
         queueHeadUpdater.increaseCompletedCnt(fullQueueName.toString(), 1L);
+        releaseSequentialLock(fullQueueName.toString(), taskId);
+    }
+
+    private void reportUsage(QueueDB queueDB, Map<String, Object> result) {
+        reportUsage(queueRepo.parseTask(queueDB), result);
+    }
+
+    private void reportUsage(Task task, Map<String, Object> result) {
+        Channel channel = OpenapiUtils.getChannelByQueue(task.getQueue());
+        if(channel == null) {
+            return;
+        }
+
+        ApikeyInfo apikeyInfo = OpenapiUtils.getInstance().whoami(task.getAk());
+        boolean isBatch = StringUtils.startsWith(task.getTraceId(), IDGenerator.BATCH_PREFIX);
+        Map channelInfo = JsonUtils.fromJson(channel.getChannelInfo(), Map.class);
+        String encodingType = MapUtils.getString(channelInfo, "encodingType");
+
+        EndpointProcessData processData = EndpointProcessData.builder()
+                .endpoint(task.getEndpoint())
+                .akCode(apikeyInfo.getCode())
+                .apikey(apikeyInfo.getApikey())
+                .akSha(apikeyInfo.getAkSha())
+                .channelCode(channel.getChannelCode())
+                .priceInfo(channel.getPriceInfo())
+                .requestId(task.getTaskId())
+                .requestRaw(JsonUtils.toJson(task.getData()))
+                .responseRaw(JsonUtils.toJson(result.get(BODY)))
+                .batch(isBatch)
+                .innerLog(true)
+                .encodingType(encodingType)
+                .bellaTraceId(task.getTaskId())
+                .build();
+
+        try {
+            OpenapiUtils.getInstance().log(processData);
+        } catch (Exception e) {
+            log.error("Failed to report usage for taskId: {}", task.getTaskId(), e);
+        }
     }
 
     private static final ExpiringMap<String, ITaskCallback> TASK_RUNS = ExpiringMap.builder()
@@ -255,6 +323,19 @@ public class QueueService {
         return eventbusConfig;
     }
 
+    private void releaseSequentialLock(String queueName, String taskId) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            String runningKey = "sequential:running:" + queueName;
+            String runningTaskId = jedis.get(runningKey);
+
+            if(taskId.equals(runningTaskId)) {
+                jedis.del(runningKey);
+            }
+        } catch (Exception e) {
+            log.error("Failed to release sequential lock for queue: {}, task: {}", queueName, taskId, e);
+        }
+    }
+
     private void loadTasks(String fullQueueName) {
         if(!queueRepo.hasMoreTask(fullQueueName)) {
             return;
@@ -288,4 +369,5 @@ public class QueueService {
             log.error("Failed to release lock: {}", lockKey, e);
         }
     }
+
 }

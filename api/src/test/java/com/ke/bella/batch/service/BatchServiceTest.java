@@ -14,6 +14,7 @@ import com.ke.bella.openapi.apikey.ApikeyInfo;
 import com.theokanning.openai.batch.Batch;
 import com.theokanning.openai.batch.BatchRequest;
 import com.theokanning.openai.batch.RequestCounts;
+import com.theokanning.openai.queue.Task;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;

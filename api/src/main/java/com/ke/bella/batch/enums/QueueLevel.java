@@ -1,5 +1,6 @@
 package com.ke.bella.batch.enums;
 
+import com.ke.bella.batch.service.Configs;
 import com.ke.bella.batch.service.FullQueueName;
 import lombok.Getter;
 
@@ -16,6 +17,10 @@ public enum QueueLevel {
         this.level = level;
     }
 
+    public static boolean isOnline(int level) {
+        return L0.getLevel() == level;
+    }
+
     public boolean isOnline() {
         return this == L0;
     }
@@ -25,7 +30,7 @@ public enum QueueLevel {
     }
 
     public static int getCapacity(int level) {
-        return level == 0 ? Integer.MAX_VALUE : 1000;
+        return level == 0 ? Configs.ONLINE_QUEUE_CAPACITY : Configs.OFFLINE_QUEUE_CAPACITY;
     }
 
     public static QueueLevel fromLevel(int level) {

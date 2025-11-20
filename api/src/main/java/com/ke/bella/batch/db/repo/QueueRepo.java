@@ -1,5 +1,6 @@
 package com.ke.bella.batch.db.repo;
 
+import com.ke.bella.batch.enums.BatchStatus;
 import com.ke.bella.batch.enums.QueueLevel;
 import com.ke.bella.batch.enums.TaskStatus;
 import com.ke.bella.batch.service.FullQueueName;
@@ -48,6 +49,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import static com.ke.bella.batch.Tables.BATCH;
 import static com.ke.bella.batch.Tables.QUEUE;
 import static com.ke.bella.batch.Tables.QUEUE_HEAD;
 import static com.ke.bella.batch.Tables.QUEUE_SHARDING;
@@ -80,6 +82,7 @@ public class QueueRepo implements BaseRepo {
     private QueueHeadUpdater queueHeadUpdater;
 
     private static final Predicate<String> DATA_TOO_LARGE = input -> input.length() * 3 > 65535;
+    private static final long SCAN_STEP_SIZE = 50000L;
 
     @Value("${bella.queue.load.batch.size:100}")
     private int loadTaskBatchSize;
@@ -290,7 +293,7 @@ public class QueueRepo implements BaseRepo {
                 .fetchOneInto(QueueDB.class);
     }
 
-    private Task parseTask(QueueDB queueDB) {
+    public Task parseTask(QueueDB queueDB) {
         String taskId = queueDB.getTaskId();
 
         Task task = Task.builder()
@@ -489,47 +492,71 @@ public class QueueRepo implements BaseRepo {
                 .fetchOneInto(QueueHeadDB.class);
     }
 
-    private int collectTasks(String shardingKey, long lastScannedId, int limit,
+    private List<QueueDB> collectTasks(String shardingKey, long lastScannedId, long maxScanId, int limit,
             List<QueueDB> allTasks, Map<String, List<Long>> tasksBySharding) {
-        List<QueueDB> tasks = pullTasksForUpdate(shardingKey, lastScannedId, limit);
-        if(!tasks.isEmpty()) {
-            allTasks.addAll(tasks);
-            tasksBySharding.put(shardingKey, tasks.stream().map(QueueDB::getId).collect(Collectors.toList()));
-        }
-        return tasks.size();
+        List<QueueDB> tasks = db(shardingKey)
+                .select(QUEUE.fields())
+                .from(QUEUE)
+                .leftJoin(BATCH).on(QUEUE.TRACE_ID.eq(BATCH.BATCH_ID))
+                .where(QUEUE.ID.gt(lastScannedId))
+                .and(QUEUE.ID.le(maxScanId))
+                .and(QUEUE.STATUS.eq(TaskStatus.waiting.name()))
+                .and(QUEUE.TRACE_ID.eq("").or(
+                        BATCH.STATUS.eq(BatchStatus.in_progress.name()).and(
+                                BATCH.EXPIRED_AT.gt(LocalDateTime.now())))
+                )
+                .orderBy(QUEUE.ID.asc())
+                .limit(limit)
+                .fetchInto(QueueDB.class);
+
+        allTasks.addAll(tasks);
+        tasksBySharding.put(shardingKey, tasks.stream().map(QueueDB::getId).collect(Collectors.toList()));
+        return tasks;
+    }
+
+    private long getScannedId(List<QueueDB> tasks, long maxScanId) {
+        return tasks.isEmpty() ? maxScanId : tasks.get(tasks.size() - 1).getId();
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void loadTasks(String fullQueueName, BlockingQueue<Task> queue) {
         QueueHeadDB queueHead = findQueueHead(fullQueueName);
-        List<QueueDB> allTasks = new ArrayList<>();
+        List<QueueDB> allTasks = new ArrayList<>(loadTaskBatchSize);
         Map<String, List<Long>> tasksBySharding = new HashMap<>();
-
         String currentSharding = queueHead.getLastScannedShardingKey();
-        collectTasks(currentSharding, queueHead.getLastScannedId(), loadTaskBatchSize, allTasks, tasksBySharding);
+        long currentScannedId = queueHead.getLastScannedId();
+        long currentMaxId = getQueueMaxId(currentSharding);
+        long maxScanId = Math.min(currentScannedId + SCAN_STEP_SIZE, currentMaxId);
 
-        if(allTasks.size() < loadTaskBatchSize) {
+        List<QueueDB> currentTasks = collectTasks(currentSharding, currentScannedId, maxScanId, loadTaskBatchSize, allTasks, tasksBySharding);
+        currentScannedId = getScannedId(currentTasks, maxScanId);
+        long processedCount = currentScannedId - queueHead.getLastScannedId();
+
+        if(allTasks.size() < loadTaskBatchSize && currentScannedId >= currentMaxId) {
             String nextSharding = findNextSharding(queueHead);
-            int remaining = loadTaskBatchSize - allTasks.size();
-            if(nextSharding != null && collectTasks(nextSharding, 0L, remaining, allTasks, tasksBySharding) > 0) {
+            long nextMaxScanId = nextSharding != null ? Math.min(SCAN_STEP_SIZE, getQueueMaxId(nextSharding)) : 0;
+
+            if(nextMaxScanId > 0) {
+                List<QueueDB> nextTasks = collectTasks(nextSharding, 0, nextMaxScanId, loadTaskBatchSize - allTasks.size(), allTasks,
+                        tasksBySharding);
+                long nextScannedId = getScannedId(nextTasks, nextMaxScanId);
                 currentSharding = nextSharding;
+                currentScannedId = nextScannedId;
+                processedCount += (nextScannedId - 0);
             }
         }
 
         if(allTasks.isEmpty()) {
+            if(processedCount > 0) {
+                updateQueueHead(queueHead.getId(), currentSharding, currentScannedId, fullQueueName, processedCount);
+            }
             return;
         }
 
-        List<Task> queueTasks = allTasks.parallelStream()
-                .map(this::parseTask)
-                .filter(task -> !task.isExpire() && !TaskStatus.cancelled.name().equals(task.getStatus()))
-                .collect(Collectors.toList());
-
-        if(queueTasks.isEmpty() || queue.addAll(queueTasks)) {
+        List<Task> queueTasks = allTasks.parallelStream().map(this::parseTask).collect(Collectors.toList());
+        if(queue.addAll(queueTasks)) {
             tasksBySharding.forEach(this::batchUpdateToQueued);
-            long lastScannedId = allTasks.get(allTasks.size() - 1).getId();
-            moveScanHead(queueHead.getId(), currentSharding, lastScannedId);
-            queueHeadUpdater.increaseLoadedCnt(fullQueueName, allTasks.size());
+            updateQueueHead(queueHead.getId(), currentSharding, currentScannedId, fullQueueName, processedCount);
         }
     }
 
@@ -562,13 +589,11 @@ public class QueueRepo implements BaseRepo {
                 .orElse(null);
     }
 
-    public List<QueueDB> pullTasksForUpdate(String shardingKey, long lastScannedId, int limit) {
-        return db(shardingKey).selectFrom(QUEUE)
-                .where(QUEUE.ID.gt(lastScannedId))
-                .orderBy(QUEUE.ID.asc())
-                .limit(limit)
-                .forUpdate()
-                .fetchInto(QueueDB.class);
+    private long getQueueMaxId(String shardingKey) {
+        Long maxId = db(shardingKey).select(QUEUE.ID.max())
+                .from(QUEUE)
+                .fetchOneInto(Long.class);
+        return maxId != null ? maxId : 0L;
     }
 
     private void batchUpdateToQueued(String shardingKey, List<Long> enqueuedTasks) {
@@ -587,6 +612,11 @@ public class QueueRepo implements BaseRepo {
                 .set(QUEUE_HEAD.MTIME, LocalDateTime.now())
                 .where(QUEUE_HEAD.ID.eq(queueHeadId))
                 .execute();
+    }
+
+    private void updateQueueHead(long queueHeadId, String shardingKey, long lastScannedId, String fullQueueName, long processedCount) {
+        moveScanHead(queueHeadId, shardingKey, lastScannedId);
+        queueHeadUpdater.increaseLoadedCnt(fullQueueName, processedCount);
     }
 
     public void updateQueueStats(String fullQueueName, long putDelta, long loadedDelta, long completedDelta) {
@@ -640,4 +670,5 @@ public class QueueRepo implements BaseRepo {
                 .and(QUEUE_HEAD.LAST_WROTE_ID.lt(lastWroteId))
                 .execute();
     }
+
 }

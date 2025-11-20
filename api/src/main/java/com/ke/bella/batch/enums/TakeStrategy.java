@@ -10,16 +10,17 @@ import redis.clients.jedis.JedisPool;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
 
 @Slf4j
+@SuppressWarnings("all")
 public enum TakeStrategy {
     //todo:: 优化实现
     fifo {
         @Override
-        @SuppressWarnings("unchecked")
         @SneakyThrows
         public List<Task> take(List<String> queueNames, int size, QueueProvider queueProvider) {
             if(size > 10) {
@@ -85,6 +86,26 @@ public enum TakeStrategy {
             }
 
             return selectedTasks;
+        }
+    },
+
+    sequential {
+        @Override
+        @SneakyThrows
+        public List<Task> take(List<String> queueNames, int size, QueueProvider queueProvider) {
+            if(queueNames.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            RedisBlockingQueue queue = (RedisBlockingQueue) queueProvider.getQueue(queueNames.get(0));
+            Object result = LuaManager.execute(queue.getJedisPool(), "sequential", queueNames);
+
+            return Optional.ofNullable((List<String>) result)
+                    .map(list -> list.stream()
+                            .map(queue::parseTask)
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.toList()))
+                    .orElse(Collections.emptyList());
         }
     };
 
