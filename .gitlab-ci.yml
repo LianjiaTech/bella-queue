@@ -7,6 +7,14 @@
     GIT_USER_NAME: "GitLab CI Bot"
     GIT_USER_EMAIL: "dy7tffuid54yu"
   script:
+    # 添加调试信息
+    - echo "开始调试变量..."
+    - echo "GITHUB_ACCESS_TOKEN 长度: ${#GITHUB_ACCESS_TOKEN}"
+    - echo "PROJECT_ACCESS_TOKEN 长度: ${#PROJECT_ACCESS_TOKEN}"
+    - if [ -z "$PROJECT_ACCESS_TOKEN" ]; then echo "❌ PROJECT_ACCESS_TOKEN 为空"; exit 1; fi
+    - if [ -z "$GITHUB_ACCESS_TOKEN" ]; then echo "❌ GITHUB_ACCESS_TOKEN 为空"; exit 1; fi
+    - echo "✅ 变量检查通过"
+    
     - echo "配置Git用户信息..."
     - git config user.name "${GIT_USER_NAME}"
     - git config user.email "${GIT_USER_EMAIL}"
