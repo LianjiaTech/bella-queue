@@ -16,11 +16,9 @@ import com.ke.bella.openapi.server.OpenAiServiceFactory;
 import com.ke.bella.openapi.server.OpenapiProperties;
 import com.theokanning.openai.service.OpenAiService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Lazy;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 
@@ -44,19 +42,11 @@ public class BellaAutoConf {
 
     private RedisMesh redisMesh;
 
-    @Autowired
-    @Lazy
-    private OpenapiClient openapiClient;
-
-    @Autowired
-    @Lazy
-    private OpenAiServiceFactory openAiServiceFactory;
     @Resource
     private BatchService bs;
 
     @PostConstruct
     public void postConstruct() {
-        OpenapiUtils.initialize(openapiClient, openAiServiceFactory);
         Long id = instanceRepo.register(BellaServerContextHolder.getIp(), BellaServerContextHolder.getPort());
         IDGenerator.setInstanceId(id);
     }
@@ -81,7 +71,12 @@ public class BellaAutoConf {
     }
 
     @Bean
-    public OpenAiService openAiService(OpenapiProperties openapiProperties) {
+    public OpenapiUtils openapiUtils(OpenapiClient openapiClient, OpenAiServiceFactory openAiServiceFactory, OpenAiService openAiService) {
+        return new OpenapiUtils(openapiClient, openAiServiceFactory, openAiService);
+    }
+
+    @Bean
+    public OpenAiService openAiService(OpenapiProperties openapiProperties, OpenAiServiceFactory openAiServiceFactory) {
         return openAiServiceFactory.create(openapiProperties.getServiceAk());
     }
 

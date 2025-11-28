@@ -9,6 +9,7 @@ import com.ke.bella.openapi.metadata.Channel;
 import com.ke.bella.openapi.protocol.route.RouteResult;
 import com.ke.bella.openapi.server.OpenAiServiceFactory;
 import com.ke.bella.queue.QueueMode;
+import com.theokanning.openai.service.OpenAiService;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
@@ -29,9 +30,11 @@ import java.util.function.Function;
 @Slf4j
 public class OpenapiUtils {
 
-    static OpenapiClient openApiClient;
+    private final OpenapiClient openapiClient;
+    private final OpenAiServiceFactory openAiServiceFactory;
+    private final OpenAiService openAiService;
 
-    static OpenAiServiceFactory openAiServiceFactory;
+    private static volatile OpenapiUtils INSTANCE;
 
     private static final Cache<String, String> QUEUE_CACHE = CacheBuilder.newBuilder()
             .expireAfterWrite(10, TimeUnit.MINUTES).maximumSize(1000).build();
@@ -39,17 +42,19 @@ public class OpenapiUtils {
     private static final Cache<String, Optional<Channel>> CHANNEL_CACHE = CacheBuilder.newBuilder()
             .expireAfterWrite(10, TimeUnit.MINUTES).maximumSize(1000).build();
 
-    public synchronized static void initialize(OpenapiClient openApiClient, OpenAiServiceFactory openAiServiceFactory) {
-        if(OpenapiUtils.openApiClient == null) {
-            OpenapiUtils.openApiClient = openApiClient;
-        }
-        if(OpenapiUtils.openAiServiceFactory == null) {
-            OpenapiUtils.openAiServiceFactory = openAiServiceFactory;
-        }
+    public OpenapiUtils(OpenapiClient openapiClient, OpenAiServiceFactory openAiServiceFactory, OpenAiService openAiService) {
+        this.openapiClient = openapiClient;
+        this.openAiServiceFactory = openAiServiceFactory;
+        this.openAiService = openAiService;
+        
+        INSTANCE = this;
     }
 
     public static OpenapiClient getInstance() {
-        return openApiClient;
+        if (INSTANCE == null) {
+            throw new IllegalStateException("OpenapiUtils not initialized as Spring bean");
+        }
+        return INSTANCE.openapiClient;
     }
 
     @SneakyThrows
@@ -60,7 +65,7 @@ public class OpenapiUtils {
         }
 
         return QUEUE_CACHE.get(endpoint + ":" + model, () -> {
-            RouteResult routeResult = getInstance().route(
+            RouteResult routeResult = INSTANCE.openapiClient.route(
                     endpoint, model, QueueMode.ROUTE.getCode()
                     , BellaContext.getApikey().getApikey()
                     , Configs.OPENAPI_CONSOLE_KEY);
@@ -77,7 +82,7 @@ public class OpenapiUtils {
         }
 
         try {
-            Channel channel = getInstance().getChannelByQueue(queueName);
+            Channel channel = INSTANCE.openapiClient.getChannelByQueue(queueName);
             CHANNEL_CACHE.put(queueName, Optional.ofNullable(channel));
             return channel;
         } catch (Exception e) {
@@ -90,8 +95,7 @@ public class OpenapiUtils {
 
     public static String saveStringAsFile(String data) {
         String fileName = UUID.randomUUID() + ".txt";
-        return openAiServiceFactory.create(Configs.OPENAPI_CONSOLE_KEY)
-                .uploadFile(Configs.FILE_API_PURPOSE, data.getBytes(), fileName).getId();
+        return INSTANCE.openAiService.uploadFile(Configs.FILE_API_PURPOSE, data.getBytes(), fileName).getId();
     }
 
     public static String fetchStringFromFile(String fileId) {
@@ -100,7 +104,7 @@ public class OpenapiUtils {
         }
         byte[] fileContent;
         try {
-            fileContent = openAiServiceFactory.create(Configs.OPENAPI_CONSOLE_KEY).retrieveFileContent(fileId).bytes();
+            fileContent = INSTANCE.openAiService.retrieveFileContent(fileId).bytes();
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
@@ -110,7 +114,7 @@ public class OpenapiUtils {
     @SneakyThrows
     public static void download(String fileId, Path path) {
         try {
-            openAiServiceFactory.create().retrieveFileContentAndSave(fileId, path);
+            INSTANCE.openAiService.retrieveFileContentAndSave(fileId, path);
         } catch (IOException e) {
             log.error("Failed to download file after all retry attempts: {} to {}", fileId, path, e);
             throw new IllegalStateException("Failed to download file: " + fileId, e);
@@ -135,7 +139,7 @@ public class OpenapiUtils {
             return null;
         }
         try {
-            return openAiServiceFactory.create(apikey).uploadFile(Configs.FILE_API_PURPOSE, filePath).getId();
+            return INSTANCE.openAiServiceFactory.create(apikey).uploadFile(Configs.FILE_API_PURPOSE, filePath).getId();
         } catch (IllegalStateException e) {
             log.error("Failed to upload file after all retry attempts: {}", filePath, e);
             throw new IllegalStateException("Failed to upload file: " + filePath, e);
