@@ -50,12 +50,11 @@ public class OpenapiUtilsTest {
 
     @Before
     public void setUp() {
-        // Clear any previous static state
-        ReflectionTestUtils.setField(OpenapiUtils.class, "openApiClient", null);
-        ReflectionTestUtils.setField(OpenapiUtils.class, "openAiServiceFactory", null);
+        // Clear any previous static instance
+        ReflectionTestUtils.setField(OpenapiUtils.class, "INSTANCE", null);
 
-        // Initialize OpenapiUtils
-        OpenapiUtils.initialize(mockOpenapiClient, mockOpenAiServiceFactory);
+        // Create OpenapiUtils instance (simulates Spring bean creation)
+        new OpenapiUtils(mockOpenapiClient, mockOpenAiServiceFactory, mockOpenAiService);
 
         // Set up BellaContext
         BellaContext.setApikey(ApikeyInfo.builder().apikey(TEST_APIKEY).build());
@@ -131,14 +130,12 @@ public class OpenapiUtilsTest {
         String expectedFileId = "file-123";
 
         when(mockFile.getId()).thenReturn(expectedFileId);
-        when(mockOpenAiServiceFactory.create(TEST_CONSOLE_KEY)).thenReturn(mockOpenAiService);
         when(mockOpenAiService.uploadFile(eq(Configs.FILE_API_PURPOSE), any(byte[].class), anyString()))
                 .thenReturn(mockFile);
 
         String result = OpenapiUtils.saveStringAsFile(testData);
 
         assertEquals(expectedFileId, result);
-        verify(mockOpenAiServiceFactory).create(TEST_CONSOLE_KEY);
         verify(mockOpenAiService).uploadFile(eq(Configs.FILE_API_PURPOSE),
                 eq(testData.getBytes()), anyString());
     }
@@ -152,7 +149,6 @@ public class OpenapiUtilsTest {
         okhttp3.ResponseBody mockResponseBody = mock(okhttp3.ResponseBody.class);
         when(mockResponseBody.bytes()).thenReturn(contentBytes);
 
-        when(mockOpenAiServiceFactory.create(TEST_CONSOLE_KEY)).thenReturn(mockOpenAiService);
         when(mockOpenAiService.retrieveFileContent(fileId)).thenReturn(mockResponseBody);
 
         String result = OpenapiUtils.fetchStringFromFile(fileId);
@@ -179,7 +175,6 @@ public class OpenapiUtilsTest {
         okhttp3.ResponseBody mockResponseBody = mock(okhttp3.ResponseBody.class);
         when(mockResponseBody.bytes()).thenThrow(new IOException("Network error"));
 
-        when(mockOpenAiServiceFactory.create(TEST_CONSOLE_KEY)).thenReturn(mockOpenAiService);
         when(mockOpenAiService.retrieveFileContent(fileId)).thenReturn(mockResponseBody);
 
         OpenapiUtils.fetchStringFromFile(fileId);
@@ -189,8 +184,6 @@ public class OpenapiUtilsTest {
     public void testDownload_Success() throws IOException {
         String fileId = "file-123";
         Path testPath = Paths.get("/tmp/test-file.txt");
-
-        when(mockOpenAiServiceFactory.create()).thenReturn(mockOpenAiService);
 
         OpenapiUtils.download(fileId, testPath);
 
@@ -202,7 +195,6 @@ public class OpenapiUtilsTest {
         String fileId = "file-123";
         Path testPath = Paths.get("/tmp/test-file.txt");
 
-        when(mockOpenAiServiceFactory.create()).thenReturn(mockOpenAiService);
         doThrow(new IOException("Download failed")).when(mockOpenAiService)
                 .retrieveFileContentAndSave(fileId, testPath);
 
