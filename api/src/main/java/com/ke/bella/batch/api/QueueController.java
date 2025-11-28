@@ -4,9 +4,10 @@ import com.ke.bella.batch.api.protocol.BellaResponse;
 import com.ke.bella.batch.db.repo.QueueRepo;
 import com.ke.bella.batch.enums.ResponseMode;
 import com.ke.bella.batch.service.QueueService;
-import com.ke.bella.batch.tables.pojos.QueueHeadDB;
 import com.ke.bella.batch.service.callback.BlockingCallback;
 import com.ke.bella.batch.service.callback.StreamingCallback;
+import com.ke.bella.batch.tables.pojos.QueueDB;
+import com.ke.bella.batch.tables.pojos.QueueHeadDB;
 import com.theokanning.openai.queue.EventbusConfig;
 import com.theokanning.openai.queue.Put;
 import com.theokanning.openai.queue.Register;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import retrofit2.http.GET;
 
 import javax.annotation.Resource;
 import java.util.List;
@@ -54,6 +56,13 @@ public class QueueController {
     @GetMapping("/eventbus")
     public EventbusConfig getEventbusConfig() {
         return qs.getEventbusConfig();
+    }
+
+    @GetMapping("/{task_id}")
+    public Task getTask(@PathVariable("task_id") String taskId) {
+        Assert.notNull(taskId, "taskId cannot be null");
+        QueueDB queueDB = queueRepo.findTask(taskId);
+        return queueRepo.parseTask(queueDB);
     }
 
     @PostMapping("/put")
