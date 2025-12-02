@@ -258,6 +258,8 @@ public class QueueService {
                 .apikey(apikeyInfo.getApikey())
                 .akSha(apikeyInfo.getAkSha())
                 .channelCode(channel.getChannelCode())
+                .supplier(channel.getSupplier())
+                .model(channel.getEntityCode())
                 .priceInfo(channel.getPriceInfo())
                 .requestId(task.getTaskId())
                 .requestRaw(JsonUtils.toJson(task.getData()))
