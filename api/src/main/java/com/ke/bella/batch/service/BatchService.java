@@ -112,7 +112,6 @@ public class BatchService {
                 .level(QueueLevel.L1.getLevel())
                 .queue(Configs.BATCH_SPLIT_QUEUE_NAME)
                 .callbackUrl(StringUtils.EMPTY)
-                .traceId(batchId)
                 .data(Map.of("batchId", batchId))
                 .build());
         return batch;
