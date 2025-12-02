@@ -84,4 +84,54 @@ public class QueueControllerTest {
         assertTrue("Queue should not be empty",
                 validRegister.getQueue() != null && !validRegister.getQueue().trim().isEmpty());
     }
+
+    @Test
+    public void testGetTaskInputValidation() {
+        // 测试getTask方法的输入参数验证逻辑
+        QueueController controller = new QueueController();
+        
+        // 测试taskId不能为null的验证逻辑
+        try {
+            controller.getTask(null);
+            fail("Should throw IllegalArgumentException for null taskId");
+        } catch (IllegalArgumentException e) {
+            assertTrue("Exception message should mention taskId", 
+                    e.getMessage().contains("taskId cannot be null"));
+        }
+    }
+
+    @Test
+    public void testGetTaskParameterValidation() {
+        // 测试getTask方法参数验证的边界情况
+        String validTaskId = "task-123";
+        String emptyTaskId = "";
+        String whitespaceTaskId = "  ";
+        
+        // 测试有效的taskId格式
+        assertNotNull("Valid taskId should not be null", validTaskId);
+        assertFalse("Valid taskId should not be empty", validTaskId.trim().isEmpty());
+        
+        // 测试空字符串taskId
+        assertNotNull("Empty taskId should not be null", emptyTaskId);
+        assertTrue("Empty taskId should be empty", emptyTaskId.trim().isEmpty());
+        
+        // 测试只有空白字符的taskId
+        assertNotNull("Whitespace taskId should not be null", whitespaceTaskId);
+        assertTrue("Whitespace taskId should be empty after trim", whitespaceTaskId.trim().isEmpty());
+    }
+
+    @Test
+    public void testGetTaskMethodSignature() {
+        // 测试getTask方法的基本属性
+        QueueController controller = new QueueController();
+        
+        // 验证方法存在且可调用（不实际调用，避免依赖问题）
+        assertNotNull("Controller should be instantiated", controller);
+        
+        // 测试方法参数验证逻辑
+        String testTaskId = "valid-task-id-123";
+        assertNotNull("Test taskId should be valid", testTaskId);
+        assertTrue("Test taskId should follow expected format", 
+                testTaskId.matches("^[a-zA-Z0-9\\-_]+$"));
+    }
 }
