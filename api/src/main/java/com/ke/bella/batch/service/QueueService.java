@@ -257,6 +257,7 @@ public class QueueService {
                 .akCode(apikeyInfo.getCode())
                 .apikey(apikeyInfo.getApikey())
                 .akSha(apikeyInfo.getAkSha())
+                .model(MapUtils.getString(task.getData(), "model"))
                 .channelCode(channel.getChannelCode())
                 .priceInfo(channel.getPriceInfo())
                 .requestId(task.getTaskId())

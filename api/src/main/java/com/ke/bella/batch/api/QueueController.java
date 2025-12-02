@@ -71,6 +71,9 @@ public class QueueController {
         Assert.notNull(put.getEndpoint(), "endpoint cannot be null");
         Assert.notNull(put.getData(), "data cannot be null");
 
+        String model = MapUtils.getString(put.getData(), "model");
+        Assert.hasText(model, "model parameter is required in request data");
+
         Task task = qs.put(put);
 
         if(ResponseMode.blocking.name().equals(put.getResponseMode())) {
