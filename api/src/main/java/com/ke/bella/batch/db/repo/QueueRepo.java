@@ -502,7 +502,7 @@ public class QueueRepo implements BaseRepo {
                 .and(QUEUE.ID.le(maxScanId))
                 .and(QUEUE.STATUS.eq(TaskStatus.waiting.name()))
                 .and(QUEUE.TRACE_ID.eq("").or(
-                        BATCH.STATUS.eq(BatchStatus.in_progress.name()).and(
+                        BATCH.STATUS.in(BatchStatus.in_progress.name(), BatchStatus.validating.name()).and(
                                 BATCH.EXPIRED_AT.gt(LocalDateTime.now())))
                 )
                 .orderBy(QUEUE.ID.asc())
