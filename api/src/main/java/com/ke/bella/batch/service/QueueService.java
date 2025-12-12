@@ -211,7 +211,9 @@ public class QueueService {
                 log.warn("Task metadata not found for online taskId: {}", taskId);
                 return;
             }
-            TaskExecutor.submit(() -> HttpUtils.postWithRetry(task.getCallbackUrl(), result));
+            if(StringUtils.isNotBlank(task.getCallbackUrl())) {
+                TaskExecutor.submit(() -> HttpUtils.postWithRetry(task.getCallbackUrl(), result));
+            }
             TaskExecutor.submitUsage(() -> reportUsage(task, result));
             queue.removeTaskMetadata(taskId);
             releaseSequentialLock(fullQueueName.toString(), taskId);
@@ -225,7 +227,7 @@ public class QueueService {
         }
 
         ResponseMode responseMode = IDGenerator.parseResponseMode(taskId);
-        if(responseMode == ResponseMode.callback) {
+        if(responseMode == ResponseMode.callback && StringUtils.isNotBlank(task.getCallbackUrl())) {
             TaskExecutor.submit(() -> HttpUtils.postWithRetry(task.getCallbackUrl(), result));
         } else if(responseMode == ResponseMode.batch) {
             TaskExecutor.submit(() -> bs.writeResult(task, result));
