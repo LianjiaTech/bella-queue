@@ -36,11 +36,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.JedisPubSub;
+import redis.clients.jedis.Pipeline;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -81,6 +84,9 @@ public class QueueService {
     private String redisPassword;
 
     private static final String LOAD_LOCK_PREFIX = "queue:load:lock:";
+    private static final String TIMEOUT_KEY_PREFIX = "timeout:";
+    private static final String KEYSPACE_PATTERN = "__keyevent@0__:expired";
+
     @Autowired
     private BatchService batchService;
 
@@ -108,6 +114,8 @@ public class QueueService {
                         .ifPresent(callback -> callback.onProgressEvent(progress));
             }
         });
+
+        TaskExecutor.submit(this::taskProcessExpireListener);
     }
 
     public Task put(Put put) {
@@ -194,10 +202,19 @@ public class QueueService {
             return entry.getValue().isEmpty();
         });
 
+        List<Task> allTasks = tasksByQueue.values().stream()
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
+
+        if(!allTasks.isEmpty() && take.getProcessTimeout() > 0) {
+            trackProcessTimeout(allTasks, take.getProcessTimeout());
+        }
+
         return tasksByQueue;
     }
 
     public void complete(String taskId, Map<String, Object> result) {
+        untrackProcessTimeout(taskId);
         int level = IDGenerator.parseLevel(taskId);
         if(QueueLevel.isOnline(level)) {
             QueueMetadataDB queueMeta = queueRepo.findMetadataById(IDGenerator.parseQueueId(taskId));
@@ -373,6 +390,58 @@ public class QueueService {
             jedis.del(lockKey);
         } catch (Exception e) {
             log.error("Failed to release lock: {}", lockKey, e);
+        }
+    }
+
+    private void trackProcessTimeout(List<Task> tasks, long timeout) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            Pipeline pipeline = jedis.pipelined();
+
+            for (Task task : tasks) {
+                String taskId = task.getTaskId();
+                pipeline.setex(TIMEOUT_KEY_PREFIX + taskId, timeout, taskId);
+            }
+
+            pipeline.sync();
+        } catch (Exception e) {
+            log.error("Failed to track tasks", e);
+        }
+    }
+
+    private void untrackProcessTimeout(String taskId) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.del(TIMEOUT_KEY_PREFIX + taskId);
+        }
+    }
+
+    @SneakyThrows
+    private void taskProcessExpireListener() {
+        JedisPubSub pubSub = new JedisPubSub() {
+            @Override
+            public void onPMessage(String pattern, String channel, String message) {
+                if(!message.startsWith(TIMEOUT_KEY_PREFIX)) {
+                    return;
+                }
+                String taskId = message.substring(TIMEOUT_KEY_PREFIX.length());
+                TaskExecutor.submit(() -> {
+                    try {
+                        Map<String, Object> result = new HashMap<>();
+                        result.put("status_code", "408");
+                        result.put("request_id", taskId);
+                        complete(taskId, result);
+                    } catch (Exception e) {
+                        log.error("Failed to handle process timeout for task: {}", taskId, e);
+                    }
+                });
+            }
+        };
+
+        while (true) {
+            try (Jedis jedis = jedisPool.getResource()) {
+                jedis.psubscribe(pubSub, KEYSPACE_PATTERN);
+            } catch (Exception e) {
+                Thread.sleep(5000);
+            }
         }
     }
 
