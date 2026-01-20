@@ -202,7 +202,66 @@ curl -X POST "https://${openApiBase}/v1/queue/take" \
 - `instance_id`: 处理节点实例ID（用于blocking/streaming模式）
 - `start_time`: 任务开始处理时间戳
 
-### 1.2.3 完成任务（batch和callback类型任务）
+### 1.2.3 查询任务状态
+
+通过任务ID查询任务的详细信息和当前状态。
+
+```bash
+curl -X GET "https://${openApiBase}/v1/queue/{task_id}" \
+-H "Authorization: Bearer ${openApiKey}"
+```
+
+#### 请求参数:
+
+- `{task_id}`: 路径参数，任务唯一标识符（必填，不能为空）
+
+#### 响应示例:
+
+```json
+{
+  "task_id": "task-123",
+  "trace_id": "trace-456",
+  "batch_id": "batch-789",
+  "ak": "decrypted-access-key",
+  "endpoint": "/v1/chat/completions",
+  "queue": "my-task-queue",
+  "level": 0,
+  "data": {
+  },
+  "result": {
+    "status_code": 200,
+    "body": {}
+  },
+  "status": "succeeded",
+  "start_time": 1635724800000,
+  "expire_time": 1635811200000,
+  "completed_time": 1635724850000,
+  "running_time": 50000,
+  "callback_url": "https://callback.example.com/webhook",
+  "response_mode": "blocking"
+}
+```
+
+#### 响应字段说明:
+
+- `task_id`: 任务唯一标识符
+- `trace_id`: 追踪ID，用于链路跟踪
+- `batch_id`: 批次ID，批量任务的批次标识
+- `ak`: 访问密钥（解密后返回）
+- `endpoint`: 任务处理能力点
+- `queue`: 队列名称
+- `level`: 队列级别（从taskId解析）
+- `data`: 上游提交的任务输入数据
+- `result`: 任务执行结果数据
+- `status`: 任务当前状态
+- `start_time`: 任务开始处理时间戳（毫秒）
+- `expire_time`: 任务过期时间戳（毫秒）
+- `completed_time`: 任务完成时间戳（毫秒，仅成功任务有此字段）
+- `running_time`: 任务运行时长（毫秒，仅成功任务有此字段）
+- `callback_url`: 回调URL地址
+- `response_mode`: 响应模式（blocking/streaming/batch/callback）
+
+### 1.2.4 完成任务（batch和callback类型任务）
 
 batch和callback类型任务需要通过该接口提交任务处理结果，标记任务完成并更新任务状态。
 
@@ -239,7 +298,7 @@ curl -X POST "https://${openApiBase}/v1/queue/{taskId}/complete" \
 task-123
 ```
 
-### 1.2.4 进度报告（blocking/streaming任务）
+### 1.2.5 进度报告（blocking/streaming任务）
 
 对于blocking和streaming模式的任务，Worker需要通过Redis Stream发送进度和完成事件，以便上游能够实时接收处理进度。
 
