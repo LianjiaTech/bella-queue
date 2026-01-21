@@ -64,8 +64,8 @@ public class LuaManager implements ApplicationContextAware {
     }
 
     public static Object execute(JedisPool jedisPool, String module, String scriptName, List<String> keys, List<String> args) {
+        String sha = getScriptSha(jedisPool, module, scriptName);
         try (Jedis jedis = jedisPool.getResource()) {
-            String sha = getScriptSha(jedisPool, module, scriptName);
             String script = getScriptContent(module, scriptName);
 
             try {
