@@ -25,6 +25,7 @@ import redis.clients.jedis.JedisPoolConfig;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.annotation.Resource;
+import java.time.Duration;
 
 @Slf4j
 @Configuration
@@ -58,6 +59,7 @@ public class BellaAutoConf {
             @Value("${bella.queue.redis.password:#{null}}") String pwd) {
         JedisPoolConfig config = new JedisPoolConfig();
         config.setJmxEnabled(false);
+        config.setMaxWait(Duration.ofMillis(5000));
         return new JedisPool(config, host, port, user, pwd);
     }
 
