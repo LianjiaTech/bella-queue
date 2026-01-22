@@ -28,6 +28,10 @@ public enum CompletionWindow {
     }
 
     public static LocalDateTime calculateExpirationTime(LocalDateTime createTime, String completionWindow) {
+        return createTime.plusSeconds(toSeconds(completionWindow));
+    }
+
+    public static int toSeconds(String completionWindow) {
         String numberPart = completionWindow.replaceAll("[^0-9]", "");
         String unitPart = completionWindow.replaceAll("[0-9]", "");
 
@@ -35,13 +39,13 @@ public enum CompletionWindow {
 
         switch (unitPart.toLowerCase()) {
         case "m":
-            return createTime.plusMinutes(amount);
+            return amount * 60;
         case "h":
-            return createTime.plusHours(amount);
+            return amount * 3600;
         case "d":
-            return createTime.plusDays(amount);
+            return amount * 86400;
         default:
-            return createTime.plusHours(24);
+            return 86400;
         }
     }
 }

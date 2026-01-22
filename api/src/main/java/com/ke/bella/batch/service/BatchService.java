@@ -8,6 +8,7 @@ import com.ke.bella.batch.db.repo.BatchRepo;
 import com.ke.bella.batch.db.repo.QueueRepo;
 import com.ke.bella.batch.enums.BatchErrorType;
 import com.ke.bella.batch.enums.BatchStatus;
+import com.ke.bella.batch.enums.CompletionWindow;
 import com.ke.bella.batch.enums.QueueLevel;
 import com.ke.bella.batch.enums.ResponseMode;
 import com.ke.bella.batch.enums.TaskStatus;
@@ -106,13 +107,13 @@ public class BatchService {
         QueueMetadataDB queueMeta = getQueueMeta(create.getEndpoint(), create.getInputFileId(), queue);
         String batchId = IDGenerator.newQueueBatchId(queueMeta.getId(), QueueLevel.L1.getLevel());
         Batch batch = batchRepo.saveBatch(create, batchId);
-
         queueService.put(Put.builder()
                 .endpoint(StringUtils.EMPTY)
                 .level(QueueLevel.L1.getLevel())
                 .queue(Configs.BATCH_SPLIT_QUEUE_NAME)
                 .callbackUrl(StringUtils.EMPTY)
                 .data(Map.of("batchId", batchId))
+                .timeout(CompletionWindow.toSeconds(create.getCompletionWindow()))
                 .build());
         return batch;
     }
