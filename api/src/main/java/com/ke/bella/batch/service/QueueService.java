@@ -31,6 +31,7 @@ import net.jodah.expiringmap.ExpiringMap;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -89,6 +90,9 @@ public class QueueService {
 
     @Autowired
     private BatchService batchService;
+
+    @Resource
+    private MeterRegistry meterRegistry;
 
     @PostConstruct
     @SuppressWarnings("all")
@@ -149,6 +153,7 @@ public class QueueService {
             throw new IllegalArgumentException("Unsupported response mode: " + put.getResponseMode());
         }
 
+        meterRegistry.counter("queue.task.put.total", "queue", put.getFullQueueName()).increment();
         return task;
     }
 
@@ -210,6 +215,8 @@ public class QueueService {
             trackProcessTimeout(allTasks, take.getProcessTimeout());
         }
 
+        tasksByQueue.forEach((queue, tasks)
+                -> meterRegistry.counter("queue.task.take.total", "queue", queue).increment(tasks.size()));
         return tasksByQueue;
     }
 
@@ -254,6 +261,7 @@ public class QueueService {
         FullQueueName fullQueueName = new FullQueueName(task.getQueue(), level);
         queueHeadUpdater.increaseCompletedCnt(fullQueueName.toString(), 1L);
         releaseSequentialLock(fullQueueName.toString(), taskId);
+        meterRegistry.counter("queue.task.complete.total", "queue", fullQueueName.toString()).increment();
     }
 
     private void reportUsage(QueueDB queueDB, Map<String, Object> result) {

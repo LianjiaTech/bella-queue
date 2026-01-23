@@ -19,7 +19,8 @@ import com.theokanning.openai.queue.Task;
 import com.theokanning.openai.batch.Batch;
 import com.theokanning.openai.batch.BatchRequest;
 import com.theokanning.openai.batch.RequestCounts;
-import com.theokanning.openai.queue.Task;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -52,8 +53,14 @@ public class BatchServiceTest {
     @Mock
     private BatchCompleteCountUpdater batchCompleteCountUpdater;
 
-    @Mock 
+    @Mock
     private QueueService queueService;
+
+    @Mock
+    private MeterRegistry meterRegistry;
+
+    @Mock
+    private Counter counter;
 
     @InjectMocks
     private BatchService batchService;
@@ -72,6 +79,14 @@ public class BatchServiceTest {
 
         // Set maxSplittingBatches field using reflection to fix test failure
         ReflectionTestUtils.setField(batchService, "maxSplittingBatches", 500);
+
+        // Mock meterRegistry.counter() to return a mock Counter
+        when(meterRegistry.counter(anyString(), anyString(), anyString())).thenReturn(counter);
+        when(meterRegistry.counter(anyString(), anyString(), anyString(), anyString(), anyString())).thenReturn(counter);
+
+        // Mock queueService.put() to return a mock Task
+        Task mockTask = mock(Task.class);
+        when(queueService.put(any())).thenReturn(mockTask);
 
         createRequest = BatchRequest.builder()
                 .endpoint("/api/test")
@@ -274,11 +289,14 @@ public class BatchServiceTest {
 
         when(batchRepo.setFinalizing(batchId)).thenReturn(true);
         when(batchRepo.completeBatch(batchId)).thenReturn(true);
+        when(queueRepo.findMetadataById(1L)).thenReturn(queueMetadata);
 
         try (MockedStatic<Configs> mockedConfigs = mockStatic(Configs.class);
                 MockedStatic<FileUtils> mockedFileUtils = mockStatic(FileUtils.class);
-                MockedStatic<Files> mockedFiles = mockStatic(Files.class)) {
+                MockedStatic<Files> mockedFiles = mockStatic(Files.class);
+                MockedStatic<IDGenerator> mockedIDGenerator = mockStatic(IDGenerator.class)) {
 
+            mockedIDGenerator.when(() -> IDGenerator.parseQueueIdFromBatchId(batchId)).thenReturn(1L);
             mockedConfigs.when(() -> Configs.getBatchDir(batchId)).thenReturn(java.nio.file.Paths.get("/tmp/test-batch"));
             mockedConfigs.when(() -> Configs.getBatchOutputFile(batchId)).thenReturn(java.nio.file.Paths.get("/tmp/output"));
             mockedConfigs.when(() -> Configs.getBatchErrorFile(batchId)).thenReturn(java.nio.file.Paths.get("/tmp/error"));
