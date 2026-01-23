@@ -26,6 +26,7 @@ import com.theokanning.openai.batch.Batch;
 import com.theokanning.openai.batch.BatchRequest;
 import com.theokanning.openai.queue.Put;
 import com.theokanning.openai.queue.Task;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
@@ -64,6 +65,9 @@ public class BatchService {
 
     @Resource
     private BatchCompleteCountUpdater batchCompleteCountUpdater;
+
+    @Resource
+    private MeterRegistry meterRegistry;
 
     private static final int FLUSH_THRESHOLD = 100;
 
@@ -114,6 +118,8 @@ public class BatchService {
                 .callbackUrl(StringUtils.EMPTY)
                 .data(Map.of("batchId", batchId))
                 .build());
+
+        meterRegistry.counter("batch.create.total", "queue", queueMeta.getQueue()).increment();
         return batch;
     }
 
@@ -174,6 +180,7 @@ public class BatchService {
                 doFinalize(batchId, BatchStatus.completed.name());
             }
             result.put("success", "done");
+            meterRegistry.counter("batch.splitted.total", "queue", queueMeta.getQueue()).increment();
         } catch (Exception e) {
             log.error("Failed to split batch batchId: {}", batchId, e);
             batchRepo.setFailed(batchId);
@@ -197,6 +204,7 @@ public class BatchService {
 
         AtomicLong lines = new AtomicLong(skips);
 
+        FullQueueName fullQueueName = new FullQueueName(queueMeta.getQueue(), QueueLevel.L1.getLevel());
         FileUtils.processLines(filePath, skips, line -> {
             if(StringUtils.isEmpty(line)) {
                 return;
@@ -205,6 +213,7 @@ public class BatchService {
             try {
                 Task task = createTask(batch, queueMeta, line, lines.get());
                 tasks.add(task);
+                meterRegistry.counter("queue.task.put.total", "queue", fullQueueName.toString()).increment();
             } catch (Exception e) {
                 Task task = new Task();
                 task.setTaskId(StringUtils.EMPTY);
@@ -240,6 +249,10 @@ public class BatchService {
                 doCancel(batchId);
             }
 
+            Long queueId = IDGenerator.parseQueueIdFromBatchId(batchId);
+            QueueMetadataDB queueMeta = queueRepo.findMetadataById(queueId);
+            meterRegistry.counter("batch.finalize.total", "queue"
+                    , queueMeta.getQueue(), "status", status).increment();
         } finally {
             batchCompleteCountUpdater.remove(batchId);
             FileUtils.removeAll(Configs.getBatchDir(batchId));
