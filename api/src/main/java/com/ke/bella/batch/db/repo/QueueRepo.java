@@ -501,10 +501,9 @@ public class QueueRepo implements BaseRepo {
                 .where(QUEUE.ID.gt(lastScannedId))
                 .and(QUEUE.ID.le(maxScanId))
                 .and(QUEUE.STATUS.eq(TaskStatus.waiting.name()))
-                .and(QUEUE.TRACE_ID.eq("").or(
-                        BATCH.STATUS.in(BatchStatus.in_progress.name(), BatchStatus.validating.name()).and(
-                                BATCH.EXPIRED_AT.gt(LocalDateTime.now())))
-                )
+                .and((QUEUE.TRACE_ID.eq("").and(QUEUE.EXPIRED_AT.gt(LocalDateTime.now())))
+                        .or(BATCH.STATUS.in(BatchStatus.in_progress.name(), BatchStatus.validating.name())
+                                .and(BATCH.EXPIRED_AT.gt(LocalDateTime.now()))))
                 .orderBy(QUEUE.ID.asc())
                 .limit(limit)
                 .fetchInto(QueueDB.class);
