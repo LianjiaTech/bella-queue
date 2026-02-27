@@ -245,6 +245,10 @@ public class QueueService {
         }
 
         QueueDB task = queueRepo.findTask(taskId);
+        if(task == null) {
+            log.warn("Task not found in database for taskId: {}", taskId);
+            return;
+        }
         boolean completed = queueRepo.completeTask(task, result);
         if(!completed) {
             return;
