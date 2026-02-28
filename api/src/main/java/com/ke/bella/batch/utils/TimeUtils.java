@@ -30,4 +30,13 @@ public class TimeUtils {
     public static String formatTimestamp(LocalDateTime dateTime) {
         return dateTime.format(TIMESTAMP_FORMATTER);
     }
+
+    public static long toSeconds(LocalDateTime dateTime) {
+        if(dateTime == null) {
+            return 0;
+        }
+        long targetEpochMilli = toEpochMilli(dateTime);
+        long currentEpochMilli = System.currentTimeMillis();
+        return (targetEpochMilli - currentEpochMilli) / 1000;
+    }
 }

@@ -24,6 +24,7 @@ import com.theokanning.openai.queue.EventbusConfig;
 import com.theokanning.openai.queue.Put;
 import com.theokanning.openai.queue.Take;
 import com.theokanning.openai.queue.Task;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.expiringmap.ExpirationListener;
@@ -31,7 +32,6 @@ import net.jodah.expiringmap.ExpiringMap;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
-import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -89,6 +89,8 @@ public class QueueService {
 
     private static final String LOAD_LOCK_PREFIX = "queue:load:lock:";
     private static final String TIMEOUT_KEY_PREFIX = "timeout:";
+    private static final String RETRY_COUNT_PREFIX = "retry:";
+    private static final String MAX_RETRY_PREFIX = "max_retry:";
     private static final String KEYSPACE_PATTERN = "__keyevent@0__:expired";
 
     @Autowired
@@ -114,7 +116,7 @@ public class QueueService {
                 TaskEvent.Completion.Payload completion = TaskEvent.Completion.fromPayload(event.getPayload());
                 Optional.ofNullable(TASK_RUNS.remove(completion.getTaskId()))
                         .ifPresent(callback -> callback.onCompletionEvent(completion));
-                untrackProcessTimeout(completion.getTaskId());
+                unTrackTask(completion.getTaskId());
                 redisMesh.refreshPrivateChannel();
                 log.info("Completion event processed for task [{}], event: {}", completion.getTaskId(), event.getPayload());
             }
@@ -231,7 +233,7 @@ public class QueueService {
                 .collect(Collectors.toList());
 
         if(!allTasks.isEmpty() && take.getProcessTimeout() > 0) {
-            trackProcessTimeout(allTasks, take.getProcessTimeout());
+            trackTask(allTasks, take);
         }
 
         tasksByQueue.forEach((queue, tasks)
@@ -251,7 +253,7 @@ public class QueueService {
     }
 
     public void complete(String taskId, Map<String, Object> result) {
-        untrackProcessTimeout(taskId);
+        unTrackTask(taskId);
         int level = IDGenerator.parseLevel(taskId);
         if(QueueLevel.isOnline(level)) {
             QueueMetadataDB queueMeta = queueRepo.findMetadataById(IDGenerator.parseQueueId(taskId));
@@ -446,24 +448,22 @@ public class QueueService {
         }
     }
 
-    private void trackProcessTimeout(List<Task> tasks, long timeout) {
+    private void trackTask(List<Task> tasks, Take take) {
         try (Jedis jedis = jedisPool.getResource()) {
             Pipeline pipeline = jedis.pipelined();
 
             for (Task task : tasks) {
                 String taskId = task.getTaskId();
-                pipeline.setex(TIMEOUT_KEY_PREFIX + taskId, timeout, taskId);
+                long ttl = (task.getExpireTime() - System.currentTimeMillis()) / 1000;
+                pipeline.setex(TIMEOUT_KEY_PREFIX + taskId, take.getProcessTimeout(), taskId);
+                if(ttl > 0) {
+                    pipeline.setex(MAX_RETRY_PREFIX + taskId, ttl, String.valueOf(take.getProcessMaxRetries()));
+                }
             }
 
             pipeline.sync();
         } catch (Exception e) {
             log.error("Failed to track tasks", e);
-        }
-    }
-
-    private void untrackProcessTimeout(String taskId) {
-        try (Jedis jedis = jedisPool.getResource()) {
-            jedis.del(TIMEOUT_KEY_PREFIX + taskId);
         }
     }
 
@@ -477,13 +477,15 @@ public class QueueService {
                 }
                 String taskId = message.substring(TIMEOUT_KEY_PREFIX.length());
                 TaskExecutor.submit(() -> {
-                    try {
-                        Map<String, Object> result = new HashMap<>();
-                        result.put("status_code", "408");
-                        result.put("request_id", taskId);
-                        complete(taskId, result);
+                    try (Jedis jedis = jedisPool.getResource()) {
+                        if(shouldRetry(taskId, jedis)) {
+                            reEnqueueTask(taskId, jedis);
+                        } else {
+                            completeWithTimeout(taskId);
+                        }
                     } catch (Exception e) {
-                        log.error("Failed to handle process timeout for task: {}", taskId, e);
+                        log.error("Failed to handle timeout for task: {}", taskId, e);
+                        completeWithTimeout(taskId);
                     }
                 });
             }
@@ -495,6 +497,66 @@ public class QueueService {
             } catch (Exception e) {
                 Thread.sleep(5000);
             }
+        }
+    }
+
+    private boolean shouldRetry(String taskId, Jedis jedis) {
+        String maxRetryStr = jedis.get(MAX_RETRY_PREFIX + taskId);
+        if(maxRetryStr == null) {
+            return false;
+        }
+        int maxRetries = Integer.parseInt(maxRetryStr);
+        if(maxRetries == 0) {
+            return false;
+        }
+
+        if(maxRetries == -1) {
+            return true;
+        }
+
+        String retryCountStr = jedis.get(RETRY_COUNT_PREFIX + taskId);
+        int currentRetryCount = retryCountStr != null ? Integer.parseInt(retryCountStr) : 0;
+        return currentRetryCount < maxRetries;
+    }
+
+    private void completeWithTimeout(String taskId) {
+        try {
+            Map<String, Object> result = new HashMap<>();
+            result.put("status_code", "408");
+            result.put("request_id", taskId);
+            complete(taskId, result);
+        } catch (Exception e) {
+            log.error("Failed to complete task {} with timeout", taskId, e);
+        }
+    }
+
+    private void reEnqueueTask(String taskId, Jedis jedis) {
+        QueueDB queueDB = queueRepo.findTask(taskId);
+        if(queueDB == null) {
+            throw new IllegalStateException("Task not found: " + taskId);
+        }
+        Task task = queueRepo.parseTask(queueDB);
+        if(task.isExpire()) {
+            throw new IllegalStateException("Task expired: " + taskId);
+        }
+
+        getQueue(task.getFullQueueName()).add(task);
+
+        String retryCountStr = jedis.get(RETRY_COUNT_PREFIX + taskId);
+        int currentRetryCount = retryCountStr != null ? Integer.parseInt(retryCountStr) : 0;
+        long ttl = TimeUtils.toSeconds(queueDB.getExpiredAt());
+        jedis.setex(RETRY_COUNT_PREFIX + taskId, ttl, String.valueOf(currentRetryCount + 1));
+    }
+
+    private void unTrackTask(String taskId) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.del(
+                    TIMEOUT_KEY_PREFIX + taskId,
+                    RETRY_COUNT_PREFIX + taskId,
+                    MAX_RETRY_PREFIX + taskId
+            );
+        } catch (Exception e) {
+            log.error("Failed to cleanup task tracking for task: {}", taskId, e);
         }
     }
 
