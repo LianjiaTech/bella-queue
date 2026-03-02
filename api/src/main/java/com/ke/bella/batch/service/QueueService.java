@@ -303,6 +303,7 @@ public class QueueService {
                 .requestRaw(JsonUtils.toJson(task.getData()))
                 .responseRaw(JsonUtils.toJson(result.get(BODY)))
                 .batch(isBatch)
+                .overrideInnerLog(true)
                 .innerLog(true)
                 .encodingType(encodingType)
                 .bellaTraceId(task.getTaskId())
