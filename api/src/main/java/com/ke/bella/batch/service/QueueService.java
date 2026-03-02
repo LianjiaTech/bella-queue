@@ -117,6 +117,14 @@ public class QueueService {
             @Override
             public void processMessage(RedisMesh.Event event) {
                 TaskEvent.Progress.Payload progress = TaskEvent.Progress.fromPayload(event.getPayload());
+                Object eventData = progress.getEventData();
+                if(eventData instanceof String) {
+                    String dataStr = (String) eventData;
+                    if(dataStr.startsWith("data:")) {
+                        eventData = dataStr.substring("data:".length()).trim();
+                    }
+                }
+                progress.setEventData(eventData);
                 Optional.ofNullable(TASK_RUNS.get(progress.getTaskId()))
                         .ifPresent(callback -> callback.onProgressEvent(progress));
             }
