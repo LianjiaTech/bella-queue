@@ -94,6 +94,9 @@ public class QueueService {
     @Resource
     private MeterRegistry meterRegistry;
 
+    @Resource
+    private BatchCompleteCountUpdater batchCompleteCountUpdater;
+
     @PostConstruct
     @SuppressWarnings("all")
     public void init() {
@@ -249,12 +252,14 @@ public class QueueService {
         if(!completed) {
             return;
         }
-
         ResponseMode responseMode = IDGenerator.parseResponseMode(taskId);
         if(responseMode == ResponseMode.callback && StringUtils.isNotBlank(task.getCallbackUrl())) {
             TaskExecutor.submit(() -> HttpUtils.postWithRetry(task.getCallbackUrl(), result));
-        } else if(responseMode == ResponseMode.batch) {
-            TaskExecutor.submit(() -> bs.writeResult(task, result));
+        } else if(responseMode == ResponseMode.batch && !bs.isCanceled(task.getBatchId())) {
+            TaskExecutor.submit(() -> {
+                bs.writeResult(task, result);
+                batchCompleteCountUpdater.increaseCompleteCount(task.getBatchId(), 1);
+            });
         }
         TaskExecutor.submitUsage(() -> reportUsage(task, result));
 

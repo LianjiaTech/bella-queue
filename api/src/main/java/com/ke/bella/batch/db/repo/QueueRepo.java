@@ -5,7 +5,6 @@ import com.ke.bella.batch.enums.QueueLevel;
 import com.ke.bella.batch.enums.TaskStatus;
 import com.ke.bella.batch.service.FullQueueName;
 import com.ke.bella.batch.service.QueueTaskCountUpdater;
-import com.ke.bella.batch.service.BatchCompleteCountUpdater;
 import com.ke.bella.batch.service.QueueHeadUpdater;
 import com.ke.bella.batch.tables.Queue;
 import com.ke.bella.batch.tables.QueueSharding;
@@ -74,9 +73,6 @@ public class QueueRepo implements BaseRepo {
 
     @Resource
     private QueueTaskCountUpdater updator;
-
-    @Resource
-    private BatchCompleteCountUpdater batchCompleteCountUpdater;
 
     @Resource
     private QueueHeadUpdater queueHeadUpdater;
@@ -278,9 +274,6 @@ public class QueueRepo implements BaseRepo {
 
         if(resultCount == 0) {
             return false;
-        }
-        if(StringUtils.isNotBlank(task.getBatchId())) {
-            batchCompleteCountUpdater.increaseCompleteCount(task.getBatchId(), 1);
         }
         return true;
     }
