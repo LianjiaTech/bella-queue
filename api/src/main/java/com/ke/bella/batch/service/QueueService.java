@@ -127,7 +127,7 @@ public class QueueService {
 
     public Task put(Put put) {
         if(StringUtils.isBlank(put.getQueue())) {
-            put.setQueue(OpenapiUtils.exchangeQueueName(put.getEndpoint(), put.getData()));
+            put.setQueue(OpenapiUtils.exchangeQueueName(put.getEndpoint(), put.getData(), put.getQueueLevel()));
         }
         if(StringUtils.isBlank(put.getQueue())) {
             throw new IllegalArgumentException("Queue config cannot be found");

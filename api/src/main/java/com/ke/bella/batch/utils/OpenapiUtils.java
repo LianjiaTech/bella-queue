@@ -20,6 +20,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -46,33 +47,77 @@ public class OpenapiUtils {
         this.openapiClient = openapiClient;
         this.openAiServiceFactory = openAiServiceFactory;
         this.openAiService = openAiService;
-        
+
         INSTANCE = this;
     }
 
     public static OpenapiClient getInstance() {
-        if (INSTANCE == null) {
+        if(INSTANCE == null) {
             throw new IllegalStateException("OpenapiUtils not initialized as Spring bean");
         }
         return INSTANCE.openapiClient;
     }
 
     @SneakyThrows
-    public static String exchangeQueueName(String endpoint, Map<String, Object> data) {
+    public static String exchangeQueueName(String endpoint, Map<String, Object> data, Integer level) {
         String model = MapUtils.getString(data, "model");
         if(StringUtils.isBlank(model)) {
             throw new IllegalArgumentException("model must not be empty");
         }
 
-        return QUEUE_CACHE.get(endpoint + ":" + model, () -> {
-            RouteResult routeResult = INSTANCE.openapiClient.route(
-                    endpoint, model, QueueMode.ROUTE.getCode()
-                    , BellaContext.getApikey().getApikey()
-                    , Configs.OPENAPI_CONSOLE_KEY);
-            return Optional.ofNullable(routeResult)
-                    .map(RouteResult::getQueueName)
+        String cacheKey = endpoint + ":" + model;
+        String cached = QUEUE_CACHE.getIfPresent(cacheKey);
+        if(cached != null) {
+            return cached;
+        }
+
+        List<RouteResult> routeResults = INSTANCE.openapiClient.listAvailableChannels(endpoint, model, QueueMode.ROUTE.getCode()
+                , BellaContext.getApikey().getApikey());
+
+        if(routeResults == null || routeResults.isEmpty()) {
+            throw new IllegalStateException("No available channels found");
+        }
+
+        String queueName = null;
+
+        RouteResult workerMode0 = routeResults.stream()
+                .filter(r -> r.getWorkerMode() == 0)
+                .findFirst()
+                .orElse(null);
+        if(workerMode0 != null) {
+            queueName = workerMode0.getQueueName();
+        } else if(level == 1) {
+            RouteResult workerMode2 = routeResults.stream()
+                    .filter(r -> r.getWorkerMode() == 2)
+                    .findFirst()
                     .orElse(null);
-        });
+            if(workerMode2 != null) {
+                queueName = workerMode2.getQueueName();
+            } else {
+                RouteResult workerMode1 = routeResults.stream()
+                        .filter(r -> r.getWorkerMode() == 1)
+                        .findFirst()
+                        .orElse(null);
+                if(workerMode1 != null) {
+                    queueName = workerMode1.getQueueName();
+                }
+            }
+        } else if(level == 0) {
+            RouteResult workerMode1 = routeResults.stream()
+                    .filter(r -> r.getWorkerMode() == 1)
+                    .findFirst()
+                    .orElse(null);
+            if(workerMode1 != null) {
+                queueName = workerMode1.getQueueName();
+            }
+        }
+
+        if(queueName != null) {
+            QUEUE_CACHE.put(cacheKey, queueName);
+            return queueName;
+        }
+
+        throw new IllegalStateException(String.format("No available channel found for level=%d. model: %s", level, model));
     }
 
     public static Channel getChannelByQueue(String queueName) {

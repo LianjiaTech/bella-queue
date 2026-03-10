@@ -36,7 +36,7 @@
         <mysql.version>8.0.33</mysql.version>
         
         <!-- Bella Framework Versions -->
-        <bella-openapi.version>1.2.73</bella-openapi.version>
+        <bella-openapi.version>1.2.74</bella-openapi.version>
         <bella-openai.version>0.24.1</bella-openai.version>
         
         <!-- Utility Library Versions -->

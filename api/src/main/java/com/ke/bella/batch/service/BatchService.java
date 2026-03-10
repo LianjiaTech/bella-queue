@@ -383,7 +383,7 @@ public class BatchService {
                     firstLine -> {
                         Map lineMap = JsonUtils.fromJson(firstLine, Map.class);
                         Map<String, Object> dataMap = MapUtils.getMap(lineMap, "body");
-                        return OpenapiUtils.exchangeQueueName(endpoint, dataMap);
+                        return OpenapiUtils.exchangeQueueName(endpoint, dataMap, QueueLevel.L1.getLevel());
                     });
         }
 

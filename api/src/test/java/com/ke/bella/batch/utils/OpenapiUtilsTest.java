@@ -40,9 +40,6 @@ public class OpenapiUtilsTest {
     private OpenAiService mockOpenAiService;
 
     @Mock
-    private RouteResult mockRouteResult;
-
-    @Mock
     private File mockFile;
 
     private static final String TEST_APIKEY = "test-api-key-12345";
@@ -82,19 +79,93 @@ public class OpenapiUtilsTest {
     }
 
     @Test
-    public void testExchangeQueueName_Success() {
+    public void testExchangeQueueName_WithWorkerMode0() {
         Map<String, Object> data = new HashMap<>();
         data.put("model", "gpt-4");
 
-        when(mockRouteResult.getQueueName()).thenReturn("test-queue");
-        when(mockOpenapiClient.route(anyString(), anyString(), anyInt(), anyString(), anyString()))
-                .thenReturn(mockRouteResult);
+        RouteResult route0 = mock(RouteResult.class);
+        when(route0.getWorkerMode()).thenReturn(0);
+        when(route0.getQueueName()).thenReturn("queue-mode-0");
 
-        String result = OpenapiUtils.exchangeQueueName("/v1/chat/completions", data);
+        when(mockOpenapiClient.listAvailableChannels(anyString(), anyString(), anyInt(), anyString()))
+                .thenReturn(java.util.Arrays.asList(route0));
 
-        assertEquals("test-queue", result);
-        verify(mockOpenapiClient).route(eq("/v1/chat/completions"), eq("gpt-4"),
-                anyInt(), eq(TEST_APIKEY), eq(TEST_CONSOLE_KEY));
+        String result = OpenapiUtils.exchangeQueueName("/v1/chat/completions", data, 1);
+
+        assertEquals("queue-mode-0", result);
+        verify(mockOpenapiClient).listAvailableChannels(eq("/v1/chat/completions"), eq("gpt-4"),
+                eq(QueueMode.ROUTE.getCode()), eq(TEST_APIKEY));
+    }
+
+    @Test
+    public void testExchangeQueueName_Level1_WithWorkerMode2() {
+        Map<String, Object> data = new HashMap<>();
+        data.put("model", "gpt-4");
+
+        RouteResult route2 = mock(RouteResult.class);
+        when(route2.getWorkerMode()).thenReturn(2);
+        when(route2.getQueueName()).thenReturn("queue-mode-2");
+
+        when(mockOpenapiClient.listAvailableChannels(anyString(), anyString(), anyInt(), anyString()))
+                .thenReturn(java.util.Arrays.asList(route2));
+
+        String result = OpenapiUtils.exchangeQueueName("/v1/chat/completions", data, 1);
+
+        assertEquals("queue-mode-2", result);
+    }
+
+    @Test
+    public void testExchangeQueueName_Level1_WithWorkerMode1() {
+        Map<String, Object> data = new HashMap<>();
+        data.put("model", "gpt-4");
+
+        RouteResult route1 = mock(RouteResult.class);
+        when(route1.getWorkerMode()).thenReturn(1);
+        when(route1.getQueueName()).thenReturn("queue-mode-1");
+
+        when(mockOpenapiClient.listAvailableChannels(anyString(), anyString(), anyInt(), anyString()))
+                .thenReturn(java.util.Arrays.asList(route1));
+
+        String result = OpenapiUtils.exchangeQueueName("/v1/chat/completions", data, 1);
+
+        assertEquals("queue-mode-1", result);
+    }
+
+    @Test
+    public void testExchangeQueueName_Level0_WithWorkerMode1() {
+        Map<String, Object> data = new HashMap<>();
+        data.put("model", "gpt-4");
+
+        RouteResult route1 = mock(RouteResult.class);
+        when(route1.getWorkerMode()).thenReturn(1);
+        when(route1.getQueueName()).thenReturn("queue-mode-1");
+
+        when(mockOpenapiClient.listAvailableChannels(anyString(), anyString(), anyInt(), anyString()))
+                .thenReturn(java.util.Arrays.asList(route1));
+
+        String result = OpenapiUtils.exchangeQueueName("/v1/chat/completions", data, 0);
+
+        assertEquals("queue-mode-1", result);
+    }
+
+    @Test
+    public void testExchangeQueueName_Cache() {
+        Map<String, Object> data = new HashMap<>();
+        data.put("model", "gpt-4");
+
+        RouteResult route0 = mock(RouteResult.class);
+        when(route0.getWorkerMode()).thenReturn(0);
+        when(route0.getQueueName()).thenReturn("cached-queue");
+
+        when(mockOpenapiClient.listAvailableChannels(anyString(), anyString(), anyInt(), anyString()))
+                .thenReturn(java.util.Arrays.asList(route0));
+
+        String result1 = OpenapiUtils.exchangeQueueName("/v1/chat/completions", data, 0);
+        String result2 = OpenapiUtils.exchangeQueueName("/v1/chat/completions", data, 0);
+
+        assertEquals("cached-queue", result1);
+        assertEquals("cached-queue", result2);
+        verify(mockOpenapiClient, times(1)).listAvailableChannels(anyString(), anyString(), anyInt(), anyString());
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -102,26 +173,40 @@ public class OpenapiUtilsTest {
         Map<String, Object> data = new HashMap<>();
         data.put("model", "");
 
-        OpenapiUtils.exchangeQueueName("/v1/chat/completions", data);
+        OpenapiUtils.exchangeQueueName("/v1/chat/completions", data, 0);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testExchangeQueueName_NullModel() {
         Map<String, Object> data = new HashMap<>();
 
-        OpenapiUtils.exchangeQueueName("/v1/chat/completions", data);
+        OpenapiUtils.exchangeQueueName("/v1/chat/completions", data, 0);
     }
 
-    @Test(expected = RuntimeException.class)
-    public void testExchangeQueueName_NullRouteResult() {
+    @Test(expected = IllegalStateException.class)
+    public void testExchangeQueueName_EmptyRouteResults() {
         Map<String, Object> data = new HashMap<>();
         data.put("model", "gpt-4");
 
-        when(mockOpenapiClient.route(anyString(), anyString(), anyInt(), anyString(), anyString()))
-                .thenReturn(null);
+        when(mockOpenapiClient.listAvailableChannels(anyString(), anyString(), anyInt(), anyString()))
+                .thenReturn(java.util.Collections.emptyList());
 
-        // This should throw an exception because Guava cache doesn't allow null values
-        OpenapiUtils.exchangeQueueName("/v1/chat/completions", data);
+        OpenapiUtils.exchangeQueueName("/v1/chat/completions", data, 0);
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testExchangeQueueName_NoMatchingWorkerMode() {
+        Map<String, Object> data = new HashMap<>();
+        data.put("model", "gpt-4");
+
+        RouteResult route3 = mock(RouteResult.class);
+        when(route3.getWorkerMode()).thenReturn(3);
+        when(route3.getQueueName()).thenReturn("queue-mode-3");
+
+        when(mockOpenapiClient.listAvailableChannels(anyString(), anyString(), anyInt(), anyString()))
+                .thenReturn(java.util.Arrays.asList(route3));
+
+        OpenapiUtils.exchangeQueueName("/v1/chat/completions", data, 0);
     }
 
     @Test

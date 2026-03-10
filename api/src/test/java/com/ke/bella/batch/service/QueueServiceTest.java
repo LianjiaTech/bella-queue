@@ -79,20 +79,18 @@ public class QueueServiceTest {
 
     @Test
     public void testPut_EmptyQueueName_ThrowsException() {
-        // Mock OpenapiUtils 返回空字符串
         try (var mockedStatic = mockStatic(OpenapiUtils.class)) {
-            mockedStatic.when(() -> OpenapiUtils.exchangeQueueName(anyString(), any())).thenReturn("");
+            mockedStatic.when(() -> OpenapiUtils.exchangeQueueName(anyString(), any(), anyInt())).thenReturn("");
 
             Put emptyQueueRequest = Put.builder()
                     .endpoint("/v1/test/endpoint")
-                    .queue("") // 空队列名
+                    .queue("")
                     .level(0)
                     .data(Map.of("model", "test-model"))
                     .responseMode("callback")
                     .callbackUrl("http://callback.test")
                     .build();
 
-            // 执行测试并验证异常
             try {
                 queueService.put(emptyQueueRequest);
                 fail("Expected IllegalArgumentException");
