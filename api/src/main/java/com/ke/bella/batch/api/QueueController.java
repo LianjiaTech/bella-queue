@@ -8,8 +8,10 @@ import com.ke.bella.batch.service.callback.BlockingCallback;
 import com.ke.bella.batch.service.callback.StreamingCallback;
 import com.ke.bella.batch.tables.pojos.QueueDB;
 import com.ke.bella.batch.tables.pojos.QueueHeadDB;
+import com.ke.bella.batch.tables.pojos.QueueMetadataDB;
 import com.theokanning.openai.queue.EventbusConfig;
 import com.theokanning.openai.queue.Put;
+import com.theokanning.openai.queue.Queue;
 import com.theokanning.openai.queue.Register;
 import com.theokanning.openai.queue.Take;
 import com.theokanning.openai.queue.Task;
@@ -48,6 +50,21 @@ public class QueueController {
 
         queueRepo.register(register);
         return register.getQueue();
+    }
+
+    @GetMapping("/{queue}/metadata")
+    public Queue getQueueMetadata(@PathVariable String queue) {
+        Assert.hasText(queue, "queueName cannot be null or empty");
+
+        QueueMetadataDB metadata = queueRepo.findMetadataByName(queue);
+        if(metadata == null) {
+            return null;
+        } else {
+            return Queue.builder()
+                    .queue(metadata.getQueue())
+                    .endpoint(metadata.getEndpoint())
+                    .build();
+        }
     }
 
     @GetMapping("/eventbus")
