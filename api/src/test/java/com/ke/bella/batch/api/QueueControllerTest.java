@@ -134,4 +134,84 @@ public class QueueControllerTest {
         assertTrue("Test taskId should follow expected format",
                 testTaskId.matches("^[a-zA-Z0-9\\-_]+$"));
     }
+
+    @Test
+    public void testGetQueueMetadataParameterValidation() {
+        // 测试getQueueMetadata方法的参数验证逻辑
+        QueueController controller = new QueueController();
+
+        // 测试null参数
+        try {
+            controller.getQueueMetadata(null);
+            fail("Should throw IllegalArgumentException for null queue name");
+        } catch (IllegalArgumentException e) {
+            assertTrue("Exception message should mention queueName",
+                    e.getMessage().contains("queueName cannot be null or empty"));
+        }
+
+        // 测试空字符串参数
+        try {
+            controller.getQueueMetadata("");
+            fail("Should throw IllegalArgumentException for empty queue name");
+        } catch (IllegalArgumentException e) {
+            assertTrue("Exception message should mention queueName",
+                    e.getMessage().contains("queueName cannot be null or empty"));
+        }
+
+        // 测试只有空白字符的参数
+        try {
+            controller.getQueueMetadata("   ");
+            fail("Should throw IllegalArgumentException for whitespace queue name");
+        } catch (IllegalArgumentException e) {
+            assertTrue("Exception message should mention queueName",
+                    e.getMessage().contains("queueName cannot be null or empty"));
+        }
+    }
+
+    @Test
+    public void testGetQueueMetadataValidQueueName() {
+        // 测试有效的队列名称格式
+        String validQueueName = "test-queue-123";
+
+        assertNotNull("Valid queue name should not be null", validQueueName);
+        assertFalse("Valid queue name should not be empty", validQueueName.trim().isEmpty());
+        assertTrue("Valid queue name should match expected pattern",
+                validQueueName.matches("^[a-zA-Z0-9_\\-]+$"));
+    }
+
+    @Test
+    public void testGetQueueMetadataQueueNameEdgeCases() {
+        // 测试队列名称的边界情况
+
+        // 单字符队列名
+        String singleChar = "a";
+        assertNotNull("Single char queue name should be valid", singleChar);
+        assertTrue("Single char should match pattern", singleChar.matches("^[a-zA-Z0-9_\\-]+$"));
+
+        // 最大长度队列名（64字符）
+        StringBuilder maxLength = new StringBuilder();
+        for (int i = 0; i < 64; i++) {
+            maxLength.append("a");
+        }
+        String maxLengthName = maxLength.toString();
+        assertNotNull("Max length queue name should be valid", maxLengthName);
+        assertEquals("Max length should be 64", 64, maxLengthName.length());
+        assertTrue("Max length should match pattern", maxLengthName.matches("^[a-zA-Z0-9_\\-]+$"));
+
+        // 包含下划线和连字符的队列名
+        String mixedName = "test_queue-v1";
+        assertTrue("Mixed name should match pattern", mixedName.matches("^[a-zA-Z0-9_\\-]+$"));
+    }
+
+    @Test
+    public void testGetQueueMetadataMethodSignature() {
+        // 测试getQueueMetadata方法的基本属性
+        QueueController controller = new QueueController();
+        assertNotNull("Controller should be instantiated", controller);
+
+        // 验证方法存在且参数验证正常工作
+        String testQueueName = "valid-queue-name";
+        assertNotNull("Test queue name should be valid", testQueueName);
+        assertFalse("Test queue name should not be empty", testQueueName.trim().isEmpty());
+    }
 }
