@@ -35,6 +35,10 @@ public class Configs {
 
     public static int BATCH_THREAD_SIZE = 5;
 
+    public static int ONLINE_QUEUE_TTL = 24 * 60 * 60;
+
+    public static int OFFLINE_QUEUE_TTL = 7 * 24 * 60 * 60;
+
     public static String FILE_API_PURPOSE = "batch";
     
     public static final String BATCH_SPLIT_QUEUE_NAME = "bella_batch_split_queue";
@@ -72,6 +76,16 @@ public class Configs {
     @Value("${bella.queue.offline.capacity:1000}")
     public void setOfflineQueueCapacity(Integer offlineQueueCapacity) {
         OFFLINE_QUEUE_CAPACITY = offlineQueueCapacity;
+    }
+
+    @Value("${bella.queue.online.ttl:86400}")
+    public void setOnlineQueueTtl(Integer onlineQueueTtl) {
+        ONLINE_QUEUE_TTL = onlineQueueTtl;
+    }
+
+    @Value("${bella.queue.offline.ttl:604800}")
+    public void setOfflineQueueTtl(Integer offlineQueueTtl) {
+        OFFLINE_QUEUE_TTL = offlineQueueTtl;
     }
 
     public static Path getBatchBasePath() {
