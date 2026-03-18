@@ -88,6 +88,53 @@ public class Configs {
         OFFLINE_QUEUE_TTL = offlineQueueTtl;
     }
 
+    // ======================== ASR 配置 ========================
+
+    public static String ASR_QUEUE_ENDPOINT = "/v1/audio/transcriptions/file";
+    public static int ASR_QUEUE_DEFAULT_LEVEL = 1;
+    public static int ASR_QUEUE_DEFAULT_TIMEOUT = 300;
+    public static String ASR_OPENAPI_FETCH_BY_SHA_URL;
+    public static String ASR_OPENAPI_FETCH_BY_CODE_URL;
+    public static String ASR_OPENAPI_AK;
+    public static String ASR_USAGE_REPORT_URL;
+    public static String ASR_USAGE_REPORT_AK;
+    public static String ASR_USAGE_REPORT_ENDPOINT = "/v1/audio/transcriptions/file";
+    public static int ASR_USAGE_REPORT_TIMEOUT = 10000;
+    public static int ASR_USAGE_REPORT_RETRIES = 3;
+
+    @Value("${bella.asr.queue.endpoint:/v1/audio/transcriptions/file}")
+    public void setAsrQueueEndpoint(String v) { ASR_QUEUE_ENDPOINT = v; }
+
+    @Value("${bella.asr.queue.default-level:1}")
+    public void setAsrQueueDefaultLevel(Integer v) { ASR_QUEUE_DEFAULT_LEVEL = v; }
+
+    @Value("${bella.asr.queue.default-timeout:300}")
+    public void setAsrQueueDefaultTimeout(Integer v) { ASR_QUEUE_DEFAULT_TIMEOUT = v; }
+
+    @Value("${bella.asr.openapi.fetchbysha-url}")
+    public void setAsrOpenapiShaUrl(String v) { ASR_OPENAPI_FETCH_BY_SHA_URL = v; }
+
+    @Value("${bella.asr.openapi.fetchbycode-url}")
+    public void setAsrOpenapiCodeUrl(String v) { ASR_OPENAPI_FETCH_BY_CODE_URL = v; }
+
+    @Value("${bella.asr.openapi.ak}")
+    public void setAsrOpenapiAk(String v) { ASR_OPENAPI_AK = v; }
+
+    @Value("${bella.asr.usage-report.url}")
+    public void setAsrUsageReportUrl(String v) { ASR_USAGE_REPORT_URL = v; }
+
+    @Value("${bella.asr.usage-report.ak}")
+    public void setAsrUsageReportAk(String v) { ASR_USAGE_REPORT_AK = v; }
+
+    @Value("${bella.asr.usage-report.endpoint:/v1/audio/transcriptions/file}")
+    public void setAsrUsageReportEndpoint(String v) { ASR_USAGE_REPORT_ENDPOINT = v; }
+
+    @Value("${bella.asr.usage-report.timeout:10000}")
+    public void setAsrUsageReportTimeout(Integer v) { ASR_USAGE_REPORT_TIMEOUT = v; }
+
+    @Value("${bella.asr.usage-report.retries:3}")
+    public void setAsrUsageReportRetries(Integer v) { ASR_USAGE_REPORT_RETRIES = v; }
+
     public static Path getBatchBasePath() {
         return Paths.get(BATCH_FILE_BASE_PATH);
     }

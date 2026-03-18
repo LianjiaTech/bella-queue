@@ -104,6 +104,12 @@
             <artifactId>spring-context-support</artifactId>
         </dependency>
 
+        <!-- HTTP Client -->
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpclient</artifactId>
+        </dependency>
+
         <!-- Database & ORM -->
         <dependency>
             <groupId>mysql</groupId>

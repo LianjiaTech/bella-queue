@@ -20,27 +20,36 @@ public class DSLContextHolder {
             .build();
 
     public static synchronized DSLContext get(String key, final DSLContext db) {
+        return get(QUEUE.getName(), key, db);
+    }
+
+    public static synchronized DSLContext get(String tableName, String key, final DSLContext db) {
         if (StringUtils.isEmpty(key)) {
             return db;
         }
 
-        DSLContext ret = configurations.getIfPresent(key);
+        String cacheKey = tableName + ":" + key;
+        DSLContext ret = configurations.getIfPresent(cacheKey);
         if (ret == null) {
-            ret = DSL.using(db.configuration().derive(newSettings(key)));
-            configurations.put(key, ret);
+            ret = DSL.using(db.configuration().derive(newSettings(tableName, key)));
+            configurations.put(cacheKey, ret);
         }
 
         return ret;
     }
 
     public static Settings newSettings(String key) {
+        return newSettings(QUEUE.getName(), key);
+    }
+
+    public static Settings newSettings(String tableName, String key) {
         return new Settings().withRenderMapping(new RenderMapping()
                 .withSchemata( // 为对象设置表的映射
                         new MappedSchema()
                                 .withInputExpression(Pattern.compile(".*"))
                                 .withTables(new MappedTable()
-                                        .withInput(QUEUE.getName())
-                                        .withOutput(targetTableName(QUEUE.getName(), key)))));
+                                        .withInput(tableName)
+                                        .withOutput(targetTableName(tableName, key)))));
     }
 
     public static String targetTableName(String orignalName, String key) {

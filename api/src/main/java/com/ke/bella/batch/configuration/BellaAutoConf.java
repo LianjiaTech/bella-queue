@@ -4,6 +4,7 @@ import com.ke.bella.batch.RedisMesh;
 import com.ke.bella.batch.TaskExecutor;
 import com.ke.bella.batch.db.IDGenerator;
 import com.ke.bella.batch.db.repo.InstanceRepo;
+import com.ke.bella.batch.service.AsrTaskCountUpdater;
 import com.ke.bella.batch.service.BatchCompleteCountUpdater;
 import com.ke.bella.batch.service.BatchService;
 import com.ke.bella.batch.service.QueueHeadUpdater;
@@ -36,6 +37,8 @@ public class BellaAutoConf {
     private InstanceRepo instanceRepo;
     @Resource
     private QueueTaskCountUpdater queueTaskCountUpdater;
+    @Resource
+    private AsrTaskCountUpdater asrTaskCountUpdater;
     @Resource
     private BatchCompleteCountUpdater batchCompleteCountUpdater;
     @Resource
@@ -92,6 +95,7 @@ public class BellaAutoConf {
         try {
             batchCompleteCountUpdater.flush();
             queueTaskCountUpdater.flush();
+            asrTaskCountUpdater.flush();
             queueHeadUpdater.flush();
             redisMesh.shutdown();
             TaskExecutor.gracefulShutdown(60);

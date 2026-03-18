@@ -39,4 +39,12 @@ public class JsonUtils {
         }
     }
 
+    public static com.fasterxml.jackson.databind.JsonNode readTree(String json) {
+        try {
+            return mapper.readTree(json);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException(e);
+        }
+    }
+
 }

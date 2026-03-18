@@ -63,6 +63,46 @@ bella:
         take-strategy: ${TAKE_STRATEGY:sequential}
         size: ${TAKE_SIZE:1}
         scheduleWorkerDelayMs: ${SCHEDULED_DELAY_MS:5000}
+  # ASR配置
+  asr:
+    # ASR 独立数据库配置
+    datasource:
+      url: ${BELLA_ASR_DB_URL}
+      username: ${BELLA_ASR_DB_USERNAME}
+      password: ${BELLA_ASR_DB_PASSWORD}
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      hikari:
+        minimum-idle: 10
+        maximum-pool-size: 50
+        idle-timeout: 30000
+        max-lifetime: 1800000
+        connection-timeout: 30000
+        connection-test-query: SELECT 1
+    shard:
+      threshold: ${BELLA_ASR_SHARD_THRESHOLD:20000000}
+      check-interval-cron: ${BELLA_ASR_SHARD_CHECK_CRON:0 */5 * * * ?}
+    data:
+      limit: ${BELLA_ASR_DATA_LIMIT:65000}
+    queue:
+      service-host: ${BELLA_ASR_QUEUE_SERVICE_HOST}
+      api-key: ${BELLA_ASR_QUEUE_API_KEY}
+      endpoint: ${BELLA_ASR_QUEUE_ENDPOINT:/v1/audio/transcriptions/file}
+      default-level: ${BELLA_ASR_QUEUE_DEFAULT_LEVEL:1}
+      default-timeout: ${BELLA_ASR_QUEUE_DEFAULT_TIMEOUT:300}
+      timeout: ${BELLA_ASR_QUEUE_TIMEOUT:300}
+      retries: ${BELLA_ASR_QUEUE_RETRIES:3}
+    callback:
+      secret: ${BELLA_ASR_CALLBACK_SECRET:}
+    openapi:
+      fetchbysha-url: ${BELLA_ASR_OPENAPI_FETCHBYSHA_URL}
+      fetchbycode-url: ${BELLA_ASR_OPENAPI_FETCHBYCODE_URL}
+      ak: ${BELLA_ASR_OPENAPI_AK}
+    usage-report:
+      url: ${BELLA_ASR_USAGE_REPORT_URL}
+      ak: ${BELLA_ASR_USAGE_REPORT_AK}
+      endpoint: ${BELLA_ASR_USAGE_REPORT_ENDPOINT:/v1/audio/transcriptions/file}
+      timeout: ${BELLA_ASR_USAGE_REPORT_TIMEOUT:10000}
+      retries: ${BELLA_ASR_USAGE_REPORT_RETRIES:3}
 app:
   id: bella-queue
 
