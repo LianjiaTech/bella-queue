@@ -111,6 +111,7 @@ public class QueueService {
                 TaskEvent.Completion.Payload completion = TaskEvent.Completion.fromPayload(event.getPayload());
                 Optional.ofNullable(TASK_RUNS.remove(completion.getTaskId()))
                         .ifPresent(callback -> callback.onCompletionEvent(completion));
+                untrackProcessTimeout(completion.getTaskId());
             }
         });
         redisMesh.registerListener(TaskEvent.Progress.NAME, new RedisMesh.MessageListener() {
