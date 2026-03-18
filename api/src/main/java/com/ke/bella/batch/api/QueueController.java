@@ -13,9 +13,7 @@ import com.theokanning.openai.queue.Put;
 import com.theokanning.openai.queue.Register;
 import com.theokanning.openai.queue.Take;
 import com.theokanning.openai.queue.Task;
-import org.apache.commons.collections4.MapUtils;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,7 +23,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-import retrofit2.http.GET;
 
 import javax.annotation.Resource;
 import java.util.List;
@@ -76,10 +73,7 @@ public class QueueController {
         if(ResponseMode.blocking.name().equals(put.getResponseMode())) {
             BlockingCallback callback = new BlockingCallback(task.getTaskId(), qs, put.getTimeout());
             qs.registerTaskCallback(task.getTaskId(), callback);
-            Map<String, Object> result = callback.getResult();
-            Integer statusCode = MapUtils.getInteger(result, BlockingCallback.STATUS_CODE, 200);
-            Object payload = MapUtils.getObject(result, BlockingCallback.BODY);
-            return ResponseEntity.status(statusCode).body(payload);
+            return callback.getDeferredResult();
         } else if(ResponseMode.streaming.name().equals(put.getResponseMode())) {
             StreamingCallback callback = new StreamingCallback(task.getTaskId(), qs, put.getTimeout());
             qs.registerTaskCallback(task.getTaskId(), callback);

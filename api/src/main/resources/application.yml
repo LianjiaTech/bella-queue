@@ -5,6 +5,9 @@ server:
   max-http-header-size: 10240
 
 spring:
+  mvc:
+    async:
+      request-timeout: 310000
   datasource:
     url: ${BELLA_DB_URL}
     username: ${BELLA_DB_USERNAME}

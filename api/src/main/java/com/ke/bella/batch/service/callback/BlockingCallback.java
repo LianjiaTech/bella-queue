@@ -4,22 +4,25 @@ import com.google.common.collect.Maps;
 import com.ke.bella.batch.service.ITaskCallback;
 import com.ke.bella.batch.service.QueueService;
 import com.ke.bella.queue.TaskEvent;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.context.request.async.DeferredResult;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 
-@SuppressWarnings("all")
+@Slf4j
 public class BlockingCallback implements ITaskCallback {
     private static final int DEFAULT_TIMEOUT_SECONDS = 300;
     private static final int MAX_TIMEOUT_SECONDS = 300;
 
-    private final Map<String, Object> data = new LinkedHashMap<>();
     private final long timeout;
     private final String taskId;
-    private final long startTime;
     private final QueueService qs;
+    @Getter
+    private final DeferredResult<ResponseEntity<?>> deferredResult;
 
     public final static String STATUS_CODE = "status_code";
     public final static String BODY = "body";
@@ -28,7 +31,14 @@ public class BlockingCallback implements ITaskCallback {
         this.taskId = taskId;
         this.qs = qs;
         this.timeout = timeout <= 0 ? DEFAULT_TIMEOUT_SECONDS : Math.min(timeout, MAX_TIMEOUT_SECONDS);
-        this.startTime = System.currentTimeMillis();
+        this.deferredResult = new DeferredResult<>(this.timeout * 1000L);
+
+        this.deferredResult.onTimeout(() -> onTimeout(taskId));
+        this.deferredResult.onError((ex) -> {
+            log.warn("DeferredResult error for task [{}]", taskId, ex);
+            qs.removeTaskCallback(taskId);
+            qs.cancel(taskId);
+        });
     }
 
     @Override
@@ -37,42 +47,17 @@ public class BlockingCallback implements ITaskCallback {
     }
 
     @Override
-    public boolean isTimeout() {
-        return System.currentTimeMillis() - startTime >= timeout * 1000;
-    }
-
-    @Override
     public void onTimeout(String taskId) {
-        synchronized(data) {
-            qs.cancel(taskId);
-            data.put(STATUS_CODE, HttpStatus.REQUEST_TIMEOUT.value());
-        }
+        qs.removeTaskCallback(taskId);
+        qs.cancel(taskId);
+        deferredResult.setErrorResult(ResponseEntity.status(HttpStatus.REQUEST_TIMEOUT).build());
     }
 
     @Override
     public void onCompletionEvent(TaskEvent.Completion.Payload event) {
-        synchronized(data) {
-            Map<String, Object> result = event.getResult();
-            data.put(STATUS_CODE, MapUtils.getInteger(result, STATUS_CODE));
-            data.put(BODY, MapUtils.getMap(result, BODY, Maps.newHashMap()));
-        }
-    }
-
-    public Map<String, Object> getResult() {
-        while (!isTimeout()) {
-            synchronized(data) {
-                if(!data.isEmpty()) {
-                    return data;
-                }
-            }
-
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        onTimeout(taskId);
-        return data;
+        Map<String, Object> result = event.getResult();
+        Integer statusCode = MapUtils.getInteger(result, STATUS_CODE, 200);
+        Object payload = MapUtils.getObject(result, BODY, Maps.newHashMap());
+        deferredResult.setResult(ResponseEntity.status(statusCode).body(payload));
     }
 }

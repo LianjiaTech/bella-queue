@@ -28,6 +28,7 @@ public class StreamingCallback implements ITaskCallback {
 
         this.emitter.onError((ex) -> {
             if(!completed) {
+                qs.removeTaskCallback(taskId);
                 qs.cancel(taskId);
             }
         });
@@ -41,6 +42,7 @@ public class StreamingCallback implements ITaskCallback {
     @Override
     public void onTimeout(String taskId) {
         try {
+            qs.removeTaskCallback(taskId);
             emitter.completeWithError(new RuntimeException("Task timeout"));
         } finally {
             qs.cancel(taskId);
