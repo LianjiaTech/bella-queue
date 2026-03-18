@@ -302,8 +302,9 @@ public class RedisBlockingQueueTest {
             boolean result = redisQueue.addAll(tasks);
 
             assertTrue(result);
-            verify(mockPipeline, times(2)).set(anyString(), anyString());
+            verify(mockPipeline, times(2)).setex(anyString(), anyLong(), anyString());
             verify(mockPipeline, times(2)).zadd(eq(QUEUE_NAME), anyDouble(), anyString());
+            verify(mockPipeline).expire(eq(QUEUE_NAME), anyLong());
             verify(mockPipeline).sync();
         }
     }

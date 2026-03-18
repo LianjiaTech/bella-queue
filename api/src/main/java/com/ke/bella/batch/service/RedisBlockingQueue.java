@@ -217,7 +217,9 @@ public class RedisBlockingQueue implements BlockingQueue<Task> {
                     task.getTaskId(),
                     JsonUtils.toJson(task),
                     String.valueOf(task.getStartTime()),
-                    String.valueOf(capacity)
+                    String.valueOf(capacity),
+                    String.valueOf(QueueLevel.isOnlineQueue(queueName) ? Configs.ONLINE_QUEUE_TTL
+                            : Configs.OFFLINE_QUEUE_TTL)
             );
 
             Object result = LuaManager.execute(jedisPool, getLuaModule(),
@@ -232,12 +234,13 @@ public class RedisBlockingQueue implements BlockingQueue<Task> {
     private boolean batchEnqueue(Collection<? extends Task> tasks) {
         try (Jedis jedis = jedisPool.getResource()) {
             var pipeline = jedis.pipelined();
-
+            int ttl = Configs.OFFLINE_QUEUE_TTL;
             for (Task task : tasks) {
                 task.setAk(EncryptUtils.encrypt(task.getAk()));
-                pipeline.set(taskMetadataKey + task.getTaskId(), JsonUtils.toJson(task));
+                pipeline.setex(taskMetadataKey + task.getTaskId(), ttl, JsonUtils.toJson(task));
                 pipeline.zadd(queueName, task.getStartTime(), task.getTaskId());
             }
+            pipeline.expire(queueName, ttl);
 
             pipeline.sync();
             return true;
@@ -245,7 +248,6 @@ public class RedisBlockingQueue implements BlockingQueue<Task> {
             return false;
         }
     }
-
 
     @SuppressWarnings("unchecked")
     private Task dequeue() {
