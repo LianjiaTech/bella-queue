@@ -124,14 +124,14 @@ public class QueueControllerTest {
     public void testGetTaskMethodSignature() {
         // 测试getTask方法的基本属性
         QueueController controller = new QueueController();
-        
+
         // 验证方法存在且可调用（不实际调用，避免依赖问题）
         assertNotNull("Controller should be instantiated", controller);
-        
+
         // 测试方法参数验证逻辑
         String testTaskId = "valid-task-id-123";
         assertNotNull("Test taskId should be valid", testTaskId);
-        assertTrue("Test taskId should follow expected format", 
+        assertTrue("Test taskId should follow expected format",
                 testTaskId.matches("^[a-zA-Z0-9\\-_]+$"));
     }
 }

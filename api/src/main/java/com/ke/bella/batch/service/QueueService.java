@@ -84,6 +84,9 @@ public class QueueService {
     @Value("${bella.queue.redis.password:}")
     private String redisPassword;
 
+    @Value("${bella.queue.max.online.concurrent.requests:100000}")
+    private int maxConcurrentOnlineRequests;
+
     private static final String LOAD_LOCK_PREFIX = "queue:load:lock:";
     private static final String TIMEOUT_KEY_PREFIX = "timeout:";
     private static final String KEYSPACE_PATTERN = "__keyevent@0__:expired";
@@ -327,7 +330,7 @@ public class QueueService {
 
     private static final ExpiringMap<String, ITaskCallback> TASK_RUNS = ExpiringMap.builder()
             .variableExpiration()
-            .maxSize(10240)
+            .maxSize(300000)
             .expiration(10, TimeUnit.MINUTES)
             .asyncExpirationListener((new ExpirationListener<String, ITaskCallback>() {
                 @Override
@@ -338,7 +341,15 @@ public class QueueService {
             .build();
 
     public void registerTaskCallback(String taskId, ITaskCallback callback) {
+        if(TASK_RUNS.size() >= maxConcurrentOnlineRequests) {
+            cancel(taskId);
+            throw new IllegalStateException("Too many concurrent blocking/streaming requests, please retry later");
+        }
         TASK_RUNS.put(taskId, callback, callback.getTimeout(), TimeUnit.SECONDS);
+    }
+
+    public void removeTaskCallback(String taskId) {
+        TASK_RUNS.remove(taskId);
     }
 
     private final Cache<String, BlockingQueue<Task>> QUEUE_CACHE = CacheBuilder.newBuilder()
