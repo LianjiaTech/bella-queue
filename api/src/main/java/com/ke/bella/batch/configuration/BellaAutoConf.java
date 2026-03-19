@@ -93,7 +93,7 @@ public class BellaAutoConf {
             batchCompleteCountUpdater.flush();
             queueTaskCountUpdater.flush();
             queueHeadUpdater.flush();
-            redisMesh.shutdown();
+            redisMesh.clear();
             TaskExecutor.gracefulShutdown(60);
             instanceRepo.unregister(BellaServerContextHolder.getIp(), BellaServerContextHolder.getPort());
         } catch (InterruptedException e) {

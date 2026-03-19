@@ -43,6 +43,8 @@ public class Configs {
     
     public static final String BATCH_SPLIT_QUEUE_NAME = "bella_batch_split_queue";
 
+    public static final int PRIVATE_CHANNEL_TTL_SECONDS = 24 * 60 * 60;
+
     @Value("${bella.openapi.host}")
     public void setOpenapiHost(String openapiHost) {
         OPENAPI_HOST = openapiHost;
