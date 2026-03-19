@@ -1,6 +1,7 @@
 package com.ke.bella.batch;
 
 import com.google.common.collect.ImmutableMap;
+import com.ke.bella.batch.service.Configs;
 import com.ke.bella.openapi.BellaContext;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,6 +18,7 @@ import redis.clients.jedis.exceptions.JedisException;
 import redis.clients.jedis.params.XAddParams;
 import redis.clients.jedis.params.XReadGroupParams;
 import redis.clients.jedis.params.XReadParams;
+import redis.clients.jedis.params.XTrimParams;
 import redis.clients.jedis.resps.StreamEntry;
 
 import java.util.HashMap;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
 public class RedisMesh {
@@ -87,13 +90,15 @@ public class RedisMesh {
     private final MessageListener defaultListener;
     private final JedisPool jedisPool;
     private final AtomicBoolean running;
+    private final AtomicLong lastRefreshTime = new AtomicLong(0);
     private final long keepFromSecs;
     private final Map<String, MessageListener> listeners;
 
     private static final String BROADCAST_STREAM_PREFIX = "redis-mesh:broadcast-stream:";
     private static final String PRIVATE_STREAM_PREFIX = "redis-mesh:private-stream:";
     private static final String GROUP_STREAM_PREFIX = "redis-mesh:group-stream:";
-    private static final MessageListener DoNothingListener = new MessageListener() {};
+    private static final MessageListener DoNothingListener = new MessageListener() {
+    };
 
     public RedisMesh(String profile, String instanceId, String broadcastTopic, JedisPool pool) {
         this(profile, instanceId, broadcastTopic, 60L, DoNothingListener, pool);
@@ -166,8 +171,46 @@ public class RedisMesh {
         }
     }
 
-    public void shutdown() {
-        running.set(false);
+    public void clear() {
+        this.running.set(false);
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.del(instanceStreamKey);
+        } catch (Exception e) {
+            log.warn("Failed to delete instance stream key on shutdown: {}", instanceStreamKey, e);
+        }
+    }
+
+    /**
+     * 刷新私有 channel 的状态，包含两项维护操作：
+     * <ol>
+     *   <li>续期 TTL：instanceStreamKey 设有过期时间，正常关闭时由 clear() 主动删除；
+     *       若实例异常宕机，依赖 TTL 自动清除，避免 key 永久残留。
+     *       每次有消息到达时触发续期，保证活跃实例的 channel 不会意外过期。</li>
+     *   <li>清理旧数据：定期用 XTRIM MINID 清理 10 分钟前的数据，防止消息堆积导致内存泄漏。</li>
+     * </ol>
+     * 通过 lastRefreshTime 限流，2 秒内最多执行一次，避免高频消息时重复操作 Redis。
+     */
+    public void refreshPrivateChannel() {
+        if(!running.get()) {
+            return;
+        }
+        long last = lastRefreshTime.get();
+        long now = System.currentTimeMillis();
+        if(now - last < 2_000) {
+            return;
+        }
+        if(!lastRefreshTime.compareAndSet(last, now)) {
+            return;
+        }
+        TaskExecutor.submit(() -> {
+            try (Jedis jedis = jedisPool.getResource()) {
+                jedis.expire(instanceStreamKey, Configs.PRIVATE_CHANNEL_TTL_SECONDS);
+                jedis.xtrim(instanceStreamKey, XTrimParams.xTrimParams()
+                        .minId(String.valueOf(now - 60 * 1000 * 10)).approximateTrimming());
+            } catch (Exception e) {
+                log.warn("Failed to refresh instance stream key: {}", instanceStreamKey, e);
+            }
+        });
     }
 
     private MessageListener getListener(Event e) {

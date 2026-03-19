@@ -1,5 +1,6 @@
 package com.ke.bella.batch;
 
+import com.ke.bella.batch.service.Configs;
 import com.ke.bella.openapi.BellaContext;
 import com.ke.bella.openapi.Operator;
 import org.junit.Before;
@@ -13,16 +14,9 @@ import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.StreamEntryID;
 import redis.clients.jedis.exceptions.JedisException;
 import redis.clients.jedis.params.XAddParams;
-import redis.clients.jedis.resps.StreamEntry;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -52,6 +46,12 @@ public class RedisMeshTest {
         when(mockJedisPool.getResource()).thenReturn(mockJedis);
 
         redisMesh = new RedisMesh(TEST_PROFILE, TEST_INSTANCE_ID, TEST_BROADCAST_TOPIC, mockJedisPool);
+    }
+
+    private void setRunning(boolean value) throws Exception {
+        java.lang.reflect.Field runningField = RedisMesh.class.getDeclaredField("running");
+        runningField.setAccessible(true);
+        ((java.util.concurrent.atomic.AtomicBoolean) runningField.get(redisMesh)).set(value);
     }
 
     @Test
@@ -182,7 +182,7 @@ public class RedisMeshTest {
 
     @Test
     public void testShutdown() {
-        redisMesh.shutdown();
+        redisMesh.clear();
 
         // Can't directly test the running flag, but the method should execute without error
     }
@@ -328,6 +328,79 @@ public class RedisMeshTest {
             listener.onBroadcastMessage(event);
 
             assertTrue(onMessageCalled.get());
+        }
+    }
+
+    @Test
+    public void testRefreshPrivateChannel_CallsExpire() throws Exception {
+        setRunning(true);
+        try (MockedStatic<TaskExecutor> mockedTaskExecutor = mockStatic(TaskExecutor.class)) {
+            mockedTaskExecutor.when(() -> TaskExecutor.submit(any(Runnable.class)))
+                    .thenAnswer(invocation -> {
+                        ((Runnable) invocation.getArgument(0)).run();
+                        return null;
+                    });
+
+            redisMesh.refreshPrivateChannel();
+
+            verify(mockJedis).expire(eq(redisMesh.getInstanceStreamKey()), eq((long) Configs.PRIVATE_CHANNEL_TTL_SECONDS));
+        }
+    }
+
+    @Test
+    public void testRefreshPrivateChannel_ThrottledWithin10Seconds() throws Exception {
+        setRunning(true);
+        try (MockedStatic<TaskExecutor> mockedTaskExecutor = mockStatic(TaskExecutor.class)) {
+            mockedTaskExecutor.when(() -> TaskExecutor.submit(any(Runnable.class)))
+                    .thenAnswer(invocation -> {
+                        ((Runnable) invocation.getArgument(0)).run();
+                        return null;
+                    });
+
+            redisMesh.refreshPrivateChannel();
+            redisMesh.refreshPrivateChannel();
+
+            // 2秒内第二次调用应被跳过
+            verify(mockJedis, times(1)).expire(anyString(), anyLong());
+        }
+    }
+
+    @Test
+    public void testRenewPrivateChannel_AllowsRenewAfter10Seconds() throws Exception {
+        setRunning(true);
+        try (MockedStatic<TaskExecutor> mockedTaskExecutor = mockStatic(TaskExecutor.class)) {
+            mockedTaskExecutor.when(() -> TaskExecutor.submit(any(Runnable.class)))
+                    .thenAnswer(invocation -> {
+                        ((Runnable) invocation.getArgument(0)).run();
+                        return null;
+                    });
+
+            redisMesh.refreshPrivateChannel();
+
+            java.lang.reflect.Field field = RedisMesh.class.getDeclaredField("lastRefreshTime");
+            field.setAccessible(true);
+            java.util.concurrent.atomic.AtomicLong lastRefreshTime = (java.util.concurrent.atomic.AtomicLong) field.get(redisMesh);
+            lastRefreshTime.set(System.currentTimeMillis() - 11_000);
+
+            redisMesh.refreshPrivateChannel();
+
+            verify(mockJedis, times(2)).expire(anyString(), anyLong());
+        }
+    }
+
+    @Test
+    public void testRefreshPrivateChannel_JedisExceptionDoesNotThrow() throws Exception {
+        setRunning(true);
+        try (MockedStatic<TaskExecutor> mockedTaskExecutor = mockStatic(TaskExecutor.class)) {
+            mockedTaskExecutor.when(() -> TaskExecutor.submit(any(Runnable.class)))
+                    .thenAnswer(invocation -> {
+                        ((Runnable) invocation.getArgument(0)).run();
+                        return null;
+                    });
+
+            doThrow(new JedisException("Redis error")).when(mockJedis).expire(anyString(), anyLong());
+
+            redisMesh.refreshPrivateChannel(); // 应不抛出异常
         }
     }
 

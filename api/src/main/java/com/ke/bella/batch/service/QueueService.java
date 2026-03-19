@@ -112,6 +112,7 @@ public class QueueService {
                 Optional.ofNullable(TASK_RUNS.remove(completion.getTaskId()))
                         .ifPresent(callback -> callback.onCompletionEvent(completion));
                 untrackProcessTimeout(completion.getTaskId());
+                redisMesh.refreshPrivateChannel();
             }
         });
         redisMesh.registerListener(TaskEvent.Progress.NAME, new RedisMesh.MessageListener() {
@@ -128,6 +129,7 @@ public class QueueService {
                 progress.setEventData(eventData);
                 Optional.ofNullable(TASK_RUNS.get(progress.getTaskId()))
                         .ifPresent(callback -> callback.onProgressEvent(progress));
+                redisMesh.refreshPrivateChannel();
             }
         });
 
