@@ -116,6 +116,7 @@ public class QueueService {
                         .ifPresent(callback -> callback.onCompletionEvent(completion));
                 untrackProcessTimeout(completion.getTaskId());
                 redisMesh.refreshPrivateChannel();
+                log.info("Completion event processed for task [{}], event: {}", completion.getTaskId(), event.getPayload());
             }
         });
         redisMesh.registerListener(TaskEvent.Progress.NAME, new RedisMesh.MessageListener() {

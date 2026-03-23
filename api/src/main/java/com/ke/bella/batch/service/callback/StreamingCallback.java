@@ -28,6 +28,7 @@ public class StreamingCallback implements ITaskCallback {
 
         this.emitter.onError((ex) -> {
             if(!completed) {
+                log.warn("Task [{}] emitter error, cancelling task", taskId, ex);
                 qs.removeTaskCallback(taskId);
                 qs.cancel(taskId);
             }
@@ -42,6 +43,7 @@ public class StreamingCallback implements ITaskCallback {
     @Override
     public void onTimeout(String taskId) {
         try {
+            log.info("Task [{}] streaming timeout, closing emitter", taskId);
             qs.removeTaskCallback(taskId);
             emitter.completeWithError(new RuntimeException("Task timeout"));
         } finally {

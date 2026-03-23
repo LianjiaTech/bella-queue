@@ -48,6 +48,7 @@ public class BlockingCallback implements ITaskCallback {
 
     @Override
     public void onTimeout(String taskId) {
+        log.info("Task [{}] blocking timeout.", taskId);
         qs.removeTaskCallback(taskId);
         qs.cancel(taskId);
         deferredResult.setErrorResult(ResponseEntity.status(HttpStatus.REQUEST_TIMEOUT).build());
