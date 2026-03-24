@@ -1,4 +1,13 @@
 local queueName = ARGV[1]
+local maxScore = ARGV[2]
+
+-- 如果指定了 maxScore，先检查最小 score 的元素是否满足条件
+if maxScore and maxScore ~= "" then
+    local peek = redis.call('ZRANGEBYSCORE', queueName, '-inf', maxScore, 'LIMIT', 0, 1)
+    if #peek == 0 then
+        return nil
+    end
+end
 
 -- 从队列中取出优先级最高的任务
 local result = redis.call('ZPOPMIN', queueName, 1)

@@ -68,7 +68,16 @@ public class RedisBlockingQueue implements BlockingQueue<Task> {
         if(currentSize == 0) {
             return null;
         }
-        return dequeue();
+        return dequeue(0);
+    }
+
+    public Task poll(long minAgeSeconds) {
+        long currentSize = size();
+        if(currentSize == 0) {
+            return null;
+        }
+        long maxScore = minAgeSeconds > 0 ? System.currentTimeMillis() - minAgeSeconds * 1000L : 0;
+        return dequeue(maxScore);
     }
 
     @Override
@@ -250,10 +259,11 @@ public class RedisBlockingQueue implements BlockingQueue<Task> {
     }
 
     @SuppressWarnings("unchecked")
-    private Task dequeue() {
+    private Task dequeue(long maxScore) {
         try {
+            String maxScoreArg = maxScore > 0 ? String.valueOf(maxScore) : "";
             Object result = LuaManager.execute(jedisPool, getLuaModule(),
-                    "dequeue", List.of(queueName));
+                    "dequeue", List.of(queueName, maxScoreArg));
             if(result == null) {
                 return null;
             }

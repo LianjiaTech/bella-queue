@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import org.mockito.ArgumentCaptor;
+import com.google.common.cache.Cache;
 
 @RunWith(MockitoJUnitRunner.class)
 public class QueueServiceTest {
@@ -116,6 +117,60 @@ public class QueueServiceTest {
         } catch (Exception e) {
             //ignore
         }
+    }
+
+    @Test
+    public void testTake_PassesMinAgeSecondsToStrategy() throws Exception {
+        // 构造 take 请求，设置 minAgeSeconds=30
+        Take takeWithMinAge = Take.builder()
+                .queues(Arrays.asList("test-queue:0"))
+                .size(5)
+                .strategy("round_robin")
+                .minAgeSeconds(30L)
+                .build();
+
+        // mock QUEUE_CACHE，让 getQueue 返回 mock 的 RedisBlockingQueue
+        java.lang.reflect.Field cacheField = QueueService.class.getDeclaredField("QUEUE_CACHE");
+        cacheField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Cache<String, BlockingQueue<Task>> mockCache = mock(Cache.class);
+        cacheField.set(queueService, mockCache);
+
+        RedisBlockingQueue mockRedisQueue = mock(RedisBlockingQueue.class);
+        when(mockCache.get(eq("test-queue:0"), any())).thenReturn(mockRedisQueue);
+        // 队列返回空，不影响 minAgeSeconds 传递的验证
+        when(mockRedisQueue.poll(30L)).thenReturn(null);
+
+        queueService.take(takeWithMinAge);
+
+        // 验证 poll(30L) 被调用，说明 minAgeSeconds 正确透传
+        verify(mockRedisQueue, atLeastOnce()).poll(30L);
+    }
+
+    @Test
+    public void testTake_ZeroMinAgeSecondsNoRestriction() throws Exception {
+        Take takeNoMinAge = Take.builder()
+                .queues(Arrays.asList("test-queue:0"))
+                .size(5)
+                .strategy("round_robin")
+                .minAgeSeconds(0L)
+                .build();
+
+        java.lang.reflect.Field cacheField = QueueService.class.getDeclaredField("QUEUE_CACHE");
+        cacheField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Cache<String, BlockingQueue<Task>> mockCache = mock(Cache.class);
+        cacheField.set(queueService, mockCache);
+
+        RedisBlockingQueue mockRedisQueue = mock(RedisBlockingQueue.class);
+        when(mockCache.get(eq("test-queue:0"), any())).thenReturn(mockRedisQueue);
+        when(mockRedisQueue.poll(0L)).thenReturn(null);
+
+        queueService.take(takeNoMinAge);
+
+        verify(mockRedisQueue, atLeastOnce()).poll(0L);
+        // 确认没有用非零的 minAgeSeconds 调用
+        verify(mockRedisQueue, never()).poll(longThat(v -> v > 0));
     }
 
     @Test

@@ -248,6 +248,73 @@ public class RedisBlockingQueueTest {
     }
 
     @Test
+    public void testPollWithMinAge_ZeroMeansNoRestriction() {
+        when(mockJedis.zcard(QUEUE_NAME)).thenReturn(5L);
+
+        try (MockedStatic<LuaManager> mockedLuaManager = mockStatic(LuaManager.class);
+                MockedStatic<EncryptUtils> mockedEncryptUtils = mockStatic(EncryptUtils.class);
+                MockedStatic<JsonUtils> mockedJsonUtils = mockStatic(JsonUtils.class)) {
+
+            List<String> luaResult = Arrays.asList(TEST_TASK_ID, "{\"taskId\":\"task-123\",\"ak\":\"encrypted-ak\"}");
+            mockedLuaManager.when(() -> LuaManager.execute(eq(mockJedisPool), anyString(), anyString(), anyList()))
+                    .thenReturn(luaResult);
+            Task expectedTask = createTestTask();
+            mockedJsonUtils.when(() -> JsonUtils.fromJson(anyString(), eq(Task.class))).thenReturn(expectedTask);
+            mockedEncryptUtils.when(() -> EncryptUtils.decrypt(anyString())).thenReturn("decrypted-ak");
+
+            redisQueue.poll(0L);
+
+            // minAgeSeconds=0 时 maxScore 应为 0（空字符串），表示不限制
+            mockedLuaManager.verify(() -> LuaManager.execute(eq(mockJedisPool), anyString(), anyString(),
+                    argThat(args -> {
+                        List<String> list = (List<String>) args;
+                        return list.size() == 2 && list.get(1).equals("");
+                    })));
+        }
+    }
+
+    @Test
+    public void testPollWithMinAge_PositivePassesMaxScore() {
+        when(mockJedis.zcard(QUEUE_NAME)).thenReturn(5L);
+        long minAgeSeconds = 30L;
+        long before = System.currentTimeMillis();
+
+        try (MockedStatic<LuaManager> mockedLuaManager = mockStatic(LuaManager.class);
+                MockedStatic<EncryptUtils> mockedEncryptUtils = mockStatic(EncryptUtils.class);
+                MockedStatic<JsonUtils> mockedJsonUtils = mockStatic(JsonUtils.class)) {
+
+            List<String> luaResult = Arrays.asList(TEST_TASK_ID, "{\"taskId\":\"task-123\",\"ak\":\"encrypted-ak\"}");
+            mockedLuaManager.when(() -> LuaManager.execute(eq(mockJedisPool), anyString(), anyString(), anyList()))
+                    .thenReturn(luaResult);
+            Task expectedTask = createTestTask();
+            mockedJsonUtils.when(() -> JsonUtils.fromJson(anyString(), eq(Task.class))).thenReturn(expectedTask);
+            mockedEncryptUtils.when(() -> EncryptUtils.decrypt(anyString())).thenReturn("decrypted-ak");
+
+            redisQueue.poll(minAgeSeconds);
+
+            long after = System.currentTimeMillis();
+            mockedLuaManager.verify(() -> LuaManager.execute(eq(mockJedisPool), anyString(), anyString(),
+                    argThat(args -> {
+                        List<String> list = (List<String>) args;
+                        if(list.size() != 2 || list.get(1).isEmpty()) return false;
+                        long maxScore = Long.parseLong(list.get(1));
+                        // maxScore 应在 [before-30s, after-30s] 区间内
+                        return maxScore >= before - minAgeSeconds * 1000
+                                && maxScore <= after - minAgeSeconds * 1000;
+                    })));
+        }
+    }
+
+    @Test
+    public void testPollWithMinAge_EmptyQueueReturnsNull() {
+        when(mockJedis.zcard(QUEUE_NAME)).thenReturn(0L);
+
+        Task result = redisQueue.poll(30L);
+
+        assertNull(result);
+    }
+
+    @Test
     public void testRemove_Success() {
         Task task = createTestTask();
 
