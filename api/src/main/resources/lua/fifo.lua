@@ -1,10 +1,11 @@
 -- FIFO策略脚本: 从多个队列中按时间戳优先级取出任务
--- 参数结构: ARGV[1]=maxSize, ARGV[2]=numQueues, 
---          ARGV[3..2+numQueues]=队列名
+-- 参数结构: ARGV[1]=maxSize, ARGV[2]=numQueues, ARGV[3]=maxScore(空字符串表示不限制)
+--          ARGV[4..3+numQueues]=队列名
 
 local tasks = {}
 local maxSize = tonumber(ARGV[1])
 local numQueues = tonumber(ARGV[2])
+local maxScore = ARGV[3]  -- "" 表示不限制
 local maxRetries = maxSize * numQueues * 3  -- 最大轮询次数
 
 local count = 0
@@ -20,16 +21,17 @@ while count < maxSize and retryCount < maxRetries do
     
     -- 遍历所有队列，找到时间戳最小的任务
     for i = 1, numQueues do
-        local queueKey = ARGV[2 + i]
+        local queueKey = ARGV[3 + i]
         local metadataKey = queueKey .. ":metadata:"
-        
-        -- 获取当前队列中最早的任务
-        local queueHead = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
-        
+
+        -- 获取当前队列中满足条件的最早任务
+        local scoreMax = (maxScore and maxScore ~= "") and maxScore or '+inf'
+        local queueHead = redis.call('ZRANGEBYSCORE', queueKey, '-inf', scoreMax, 'WITHSCORES', 'LIMIT', 0, 1)
+
         if #queueHead >= 2 then
             local taskId = queueHead[1]
             local timestamp = tonumber(queueHead[2])
-            
+
             -- 检查是否为目前最早的任务
             if earliestTimestamp == nil or timestamp < earliestTimestamp then
                 earliestQueue = queueKey

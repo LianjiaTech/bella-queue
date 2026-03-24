@@ -201,7 +201,8 @@ public class QueueService {
         List<Task> selectedTasks = strategy.take(
                 take.getQueues(),
                 take.getSize(),
-                this::getQueue);
+                take.getMinAgeSeconds(),
+                queueName -> (RedisBlockingQueue) getQueue(queueName));
 
         Map<String, List<Task>> tasksByQueue = selectedTasks.stream()
                 .collect(Collectors.groupingBy(Task::getFullQueueName));
