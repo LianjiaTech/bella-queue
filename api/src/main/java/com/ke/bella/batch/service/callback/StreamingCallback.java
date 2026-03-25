@@ -28,6 +28,7 @@ public class StreamingCallback implements ITaskCallback {
 
         this.emitter.onError((ex) -> {
             if(!completed) {
+                completed = true;
                 log.warn("Task [{}] emitter error, cancelling task", taskId, ex);
                 qs.removeTaskCallback(taskId);
                 qs.cancel(taskId);
