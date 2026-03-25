@@ -236,7 +236,7 @@ public class RedisMesh {
         while (running.get()) {
             try (Jedis jedis = jedisPool.getResource()) {
                 List<Map.Entry<String, List<StreamEntry>>> sentries = jedis.xread(
-                        XReadParams.xReadParams().count(1).block(1000),
+                        XReadParams.xReadParams().count(1000).block(1000),
                         ImmutableMap.of(streamKey, new StreamEntryID(lastId)));
 
                 if(CollectionUtils.isEmpty(sentries)) {
@@ -244,18 +244,17 @@ public class RedisMesh {
                 }
 
                 List<StreamEntry> entries = sentries.get(0).getValue();
-                if(!CollectionUtils.isEmpty(entries)) {
-                    StreamEntry entry = entries.get(0);
+                for (StreamEntry entry : entries) {
                     Event event = convertMapToEvent(entry.getFields());
+                    lastId = entry.getID().toString();
                     try {
                         callback.onEvent(event);
-                        lastId = entry.getID().toString();
                     } catch (Exception e) {
                         log.error("FAILED_MESSAGE|eventName:{}|payload:{}|error:{}",
                                 event.name, event.payload, e.getMessage(), e);
-                        lastId = entry.getID().toString();
                     }
                 }
+                jedis.xtrim(streamKey, XTrimParams.xTrimParams().minId(lastId).approximateTrimming());
             } catch (Exception e) {
                 try {
                     Thread.sleep(1000);
