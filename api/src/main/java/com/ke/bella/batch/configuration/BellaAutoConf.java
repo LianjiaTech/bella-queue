@@ -15,6 +15,7 @@ import com.ke.bella.openapi.server.BellaService;
 import com.ke.bella.openapi.server.OpenAiServiceFactory;
 import com.ke.bella.openapi.server.OpenapiProperties;
 import com.theokanning.openai.service.OpenAiService;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -64,9 +65,9 @@ public class BellaAutoConf {
     }
 
     @Bean
-    public RedisMesh redisMesh(JedisPool pool, @Value("${spring.profiles.active}") String profile) {
+    public RedisMesh redisMesh(JedisPool pool, MeterRegistry meterRegistry, @Value("${spring.profiles.active}") String profile) {
         String key = String.format("%s:%s", BellaServerContextHolder.getIp(), BellaServerContextHolder.getPort());
-        RedisMesh mesh = new RedisMesh(profile, key, "bella-queue", pool);
+        RedisMesh mesh = new RedisMesh(profile, key, "bella-queue", pool, meterRegistry);
         mesh.start();
         this.redisMesh = mesh;
         return mesh;

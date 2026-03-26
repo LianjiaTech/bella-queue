@@ -3,12 +3,15 @@ package com.ke.bella.batch;
 import com.google.common.collect.ImmutableMap;
 import com.ke.bella.batch.service.Configs;
 import com.ke.bella.openapi.BellaContext;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.MapUtils;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import redis.clients.jedis.Jedis;
@@ -25,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -71,6 +75,7 @@ public class RedisMesh {
         String from;
         String payload;
         String context;
+        long timestamp;
     }
 
     @Getter
@@ -93,6 +98,7 @@ public class RedisMesh {
     private final AtomicLong lastRefreshTime = new AtomicLong(0);
     private final long keepFromSecs;
     private final Map<String, MessageListener> listeners;
+    private final MeterRegistry meterRegistry;
 
     private static final String BROADCAST_STREAM_PREFIX = "redis-mesh:broadcast-stream:";
     private static final String PRIVATE_STREAM_PREFIX = "redis-mesh:private-stream:";
@@ -100,12 +106,12 @@ public class RedisMesh {
     private static final MessageListener DoNothingListener = new MessageListener() {
     };
 
-    public RedisMesh(String profile, String instanceId, String broadcastTopic, JedisPool pool) {
-        this(profile, instanceId, broadcastTopic, 60L, DoNothingListener, pool);
+    public RedisMesh(String profile, String instanceId, String broadcastTopic, JedisPool pool, MeterRegistry meterRegistry) {
+        this(profile, instanceId, broadcastTopic, 60L, DoNothingListener, pool, meterRegistry);
     }
 
     public RedisMesh(String profile, String instanceId, String broadcastTopic, long keepFromSecs, MessageListener listener,
-            JedisPool pool) {
+            JedisPool pool, MeterRegistry meterRegistry) {
         this.profile = profile;
         this.instanceId = instanceId;
         this.broadcastTopic = broadcastTopic;
@@ -116,6 +122,7 @@ public class RedisMesh {
         this.keepFromSecs = keepFromSecs;
         this.defaultListener = listener;
         this.jedisPool = pool;
+        this.meterRegistry = meterRegistry;
         this.running = new AtomicBoolean(false);
         this.listeners = new ConcurrentHashMap<>();
     }
@@ -232,7 +239,10 @@ public class RedisMesh {
 
     private void consumeNormalMessages(String streamKey, EventCallback callback) {
         String lastId = String.format("%s-0", System.currentTimeMillis());
-
+        Timer forwardLatencyTimer = Timer.builder("redis_mesh.forward.latency")
+                .tag("stream", streamKey)
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(meterRegistry);
         while (running.get()) {
             try (Jedis jedis = jedisPool.getResource()) {
                 List<Map.Entry<String, List<StreamEntry>>> sentries = jedis.xread(
@@ -249,6 +259,10 @@ public class RedisMesh {
                     lastId = entry.getID().toString();
                     try {
                         callback.onEvent(event);
+                        if(event.getTimestamp() > 0) {
+                            long latencyMs = System.currentTimeMillis() - event.getTimestamp();
+                            forwardLatencyTimer.record(latencyMs, TimeUnit.MILLISECONDS);
+                        }
                     } catch (Exception e) {
                         log.error("FAILED_MESSAGE|eventName:{}|payload:{}|error:{}",
                                 event.name, event.payload, e.getMessage(), e);
@@ -318,6 +332,7 @@ public class RedisMesh {
         event.from = map.get("from");
         event.payload = map.get("payload");
         event.context = map.get("context");
+        event.timestamp = MapUtils.getLongValue(map, "timestamp", 0);
         return event;
     }
 }
