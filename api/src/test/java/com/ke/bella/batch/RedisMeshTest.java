@@ -3,6 +3,8 @@ package com.ke.bella.batch;
 import com.ke.bella.batch.service.Configs;
 import com.ke.bella.openapi.BellaContext;
 import com.ke.bella.openapi.Operator;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -35,28 +37,32 @@ public class RedisMeshTest {
     @Mock
     private RedisMesh.MessageListener mockListener;
 
+    // 使用 SimpleMeterRegistry 避免 mock Timer 的复杂性
+    private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
+
     private RedisMesh redisMesh;
 
     private static final String TEST_PROFILE = "test-profile";
     private static final String TEST_INSTANCE_ID = "instance-1";
     private static final String TEST_BROADCAST_TOPIC = "broadcast";
+    // start() 提交的消费线程数：1(private) + 1(broadcast) + 1(group)
+    private static final int CONSUMER_THREAD_COUNT = 3;
 
     @Before
     public void setUp() {
         when(mockJedisPool.getResource()).thenReturn(mockJedis);
-
-        redisMesh = new RedisMesh(TEST_PROFILE, TEST_INSTANCE_ID, TEST_BROADCAST_TOPIC, mockJedisPool);
+        redisMesh = new RedisMesh(TEST_PROFILE, TEST_INSTANCE_ID, TEST_BROADCAST_TOPIC, mockJedisPool, meterRegistry);
     }
 
     private void setRunning(boolean value) throws Exception {
         java.lang.reflect.Field runningField = RedisMesh.class.getDeclaredField("running");
         runningField.setAccessible(true);
-        ((java.util.concurrent.atomic.AtomicBoolean) runningField.get(redisMesh)).set(value);
+        ((AtomicBoolean) runningField.get(redisMesh)).set(value);
     }
 
     @Test
     public void testConstructor_BasicConstructor() {
-        RedisMesh mesh = new RedisMesh(TEST_PROFILE, TEST_INSTANCE_ID, TEST_BROADCAST_TOPIC, mockJedisPool);
+        RedisMesh mesh = new RedisMesh(TEST_PROFILE, TEST_INSTANCE_ID, TEST_BROADCAST_TOPIC, mockJedisPool, meterRegistry);
 
         assertEquals(TEST_PROFILE, mesh.getProfile());
         assertEquals(TEST_INSTANCE_ID, mesh.getInstanceId());
@@ -72,7 +78,7 @@ public class RedisMeshTest {
         long keepFromSecs = 120L;
 
         RedisMesh mesh = new RedisMesh(TEST_PROFILE, TEST_INSTANCE_ID, TEST_BROADCAST_TOPIC,
-                keepFromSecs, mockListener, mockJedisPool);
+                keepFromSecs, mockListener, mockJedisPool, meterRegistry);
 
         assertEquals(TEST_PROFILE, mesh.getProfile());
         assertEquals(TEST_INSTANCE_ID, mesh.getInstanceId());
@@ -87,7 +93,7 @@ public class RedisMeshTest {
             verify(mockJedis).xgroupCreate(anyString(), eq(TEST_BROADCAST_TOPIC),
                     eq(StreamEntryID.LAST_ENTRY), eq(true));
 
-            mockedTaskExecutor.verify(() -> TaskExecutor.submit(any(Runnable.class)), times(3));
+            mockedTaskExecutor.verify(() -> TaskExecutor.submit(any(Runnable.class)), times(CONSUMER_THREAD_COUNT));
         }
     }
 
@@ -100,6 +106,8 @@ public class RedisMeshTest {
             // Should only create group once
             verify(mockJedis, times(1)).xgroupCreate(anyString(), eq(TEST_BROADCAST_TOPIC),
                     eq(StreamEntryID.LAST_ENTRY), eq(true));
+
+            mockedTaskExecutor.verify(() -> TaskExecutor.submit(any(Runnable.class)), times(CONSUMER_THREAD_COUNT));
         }
     }
 
@@ -111,7 +119,7 @@ public class RedisMeshTest {
         try (MockedStatic<TaskExecutor> mockedTaskExecutor = mockStatic(TaskExecutor.class)) {
             redisMesh.start(); // Should not throw exception
 
-            mockedTaskExecutor.verify(() -> TaskExecutor.submit(any(Runnable.class)), times(3));
+            mockedTaskExecutor.verify(() -> TaskExecutor.submit(any(Runnable.class)), times(CONSUMER_THREAD_COUNT));
         }
     }
 
@@ -124,13 +132,12 @@ public class RedisMeshTest {
         // Register same name again, should not replace
         RedisMesh.MessageListener anotherListener = mock(RedisMesh.MessageListener.class);
         redisMesh.registerListener(listenerName, anotherListener);
-
-        // Verify original listener is still there (can't directly test this without accessing private field)
     }
 
     @Test
     public void testSendPrivateMessage() {
         String targetInstanceId = "target-instance";
+        // payload 非 JSON，parseTaskIdFromPayload 返回 null，shard=0，使用原始 key（无后缀）
         RedisMesh.Event event = RedisMesh.Event.builder()
                 .name("test-event")
                 .payload("test-payload")
@@ -183,8 +190,7 @@ public class RedisMeshTest {
     @Test
     public void testShutdown() {
         redisMesh.clear();
-
-        // Can't directly test the running flag, but the method should execute without error
+        // clear() 删除所有分片 key，不应抛出异常
     }
 
     @Test
@@ -219,7 +225,7 @@ public class RedisMeshTest {
 
     @Test
     public void testEventAllArgsConstructor() {
-        RedisMesh.Event event = new RedisMesh.Event("test-name", "test-from", "test-payload", "test-context");
+        RedisMesh.Event event = new RedisMesh.Event("test-name", "test-from", "test-payload", "test-context", 0L);
 
         assertEquals("test-name", event.getName());
         assertEquals("test-from", event.getFrom());
@@ -232,7 +238,6 @@ public class RedisMeshTest {
         RedisMesh.MessageListener listener = new RedisMesh.MessageListener() {
             @Override
             public void processMessage(RedisMesh.Event e) {
-                // Verify context is set
                 assertNotNull(BellaContext.getOperator());
             }
         };
@@ -246,7 +251,6 @@ public class RedisMeshTest {
             mockedBellaContext.when(() -> BellaContext.getOperator()).thenReturn(
                     Operator.builder().userId(123L).userName("test").build());
 
-            // Use reflection to call private onMessage method
             try {
                 java.lang.reflect.Method method = RedisMesh.MessageListener.class.getDeclaredMethod("onMessage", RedisMesh.Event.class);
                 method.setAccessible(true);
@@ -276,7 +280,6 @@ public class RedisMeshTest {
                 .build();
 
         try (MockedStatic<BellaContext> mockedBellaContext = mockStatic(BellaContext.class)) {
-            // Use reflection to call private onMessage method
             try {
                 java.lang.reflect.Method method = RedisMesh.MessageListener.class.getDeclaredMethod("onMessage", RedisMesh.Event.class);
                 method.setAccessible(true);
@@ -306,7 +309,6 @@ public class RedisMeshTest {
 
         try (MockedStatic<BellaContext> mockedBellaContext = mockStatic(BellaContext.class)) {
             listener.onPrivateMessage(event);
-
             assertTrue(onMessageCalled.get());
         }
     }
@@ -326,7 +328,6 @@ public class RedisMeshTest {
 
         try (MockedStatic<BellaContext> mockedBellaContext = mockStatic(BellaContext.class)) {
             listener.onBroadcastMessage(event);
-
             assertTrue(onMessageCalled.get());
         }
     }
@@ -343,7 +344,7 @@ public class RedisMeshTest {
 
             redisMesh.refreshPrivateChannel();
 
-            verify(mockJedis).expire(eq(redisMesh.getInstanceStreamKey()), eq((long) Configs.PRIVATE_CHANNEL_TTL_SECONDS));
+            verify(mockJedis, times(1)).expire(anyString(), eq((long) Configs.PRIVATE_CHANNEL_TTL_SECONDS));
         }
     }
 
@@ -358,9 +359,8 @@ public class RedisMeshTest {
                     });
 
             redisMesh.refreshPrivateChannel();
-            redisMesh.refreshPrivateChannel();
+            redisMesh.refreshPrivateChannel(); // 2秒内第二次调用应被跳过
 
-            // 2秒内第二次调用应被跳过
             verify(mockJedis, times(1)).expire(anyString(), anyLong());
         }
     }
@@ -387,7 +387,6 @@ public class RedisMeshTest {
             verify(mockJedis, times(2)).expire(anyString(), anyLong());
         }
     }
-
     @Test
     public void testRefreshPrivateChannel_JedisExceptionDoesNotThrow() throws Exception {
         setRunning(true);
@@ -416,8 +415,6 @@ public class RedisMeshTest {
         RedisMesh.Event event = RedisMesh.Event.builder().name("test").build();
 
         try (MockedStatic<BellaContext> mockedBellaContext = mockStatic(BellaContext.class)) {
-            // Use reflection to call private onMessage method
-            // onMessage doesn't catch exceptions, but should still call clearAll in finally block
             assertThrows(RuntimeException.class, () -> {
                 try {
                     java.lang.reflect.Method method = RedisMesh.MessageListener.class.getDeclaredMethod("onMessage", RedisMesh.Event.class);
@@ -432,7 +429,6 @@ public class RedisMeshTest {
                 }
             });
 
-            // Even if exception is thrown, clearAll should still be called due to finally block
             mockedBellaContext.verify(BellaContext::clearAll);
         }
     }
