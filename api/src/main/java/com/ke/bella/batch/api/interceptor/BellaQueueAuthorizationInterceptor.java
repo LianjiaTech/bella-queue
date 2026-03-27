@@ -36,7 +36,7 @@ public class BellaQueueAuthorizationInterceptor extends HandlerInterceptorAdapte
             return false;
         }
 
-        BellaContext.setApikey(ApikeyInfo.builder().apikey(ak).build());
+        BellaContext.setApikey(ApikeyInfo.builder().apikey(ak).code(apikeyInfo.getCode()).build());
         BellaContext.setOperator(Operator.builder()
                 .userId(apikeyInfo.getUserId())
                 .userName(apikeyInfo.getOwnerName())

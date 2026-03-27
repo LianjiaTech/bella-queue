@@ -17,7 +17,7 @@ import org.jooq.ForeignKey;
 import org.jooq.Identity;
 import org.jooq.Name;
 import org.jooq.Record;
-import org.jooq.Row9;
+import org.jooq.Row10;
 import org.jooq.Schema;
 import org.jooq.Table;
 import org.jooq.TableField;
@@ -63,6 +63,11 @@ public class QueueMetadata extends TableImpl<QueueMetadataRecord> {
      * The column <code>queue_metadata.endpoint</code>.
      */
     public final TableField<QueueMetadataRecord, String> ENDPOINT = createField(DSL.name("endpoint"), SQLDataType.VARCHAR(256).nullable(false).defaultValue(DSL.inline("", SQLDataType.VARCHAR)), this, "");
+
+    /**
+     * The column <code>queue_metadata.enable_take_log</code>. 是否开启打印take日志
+     */
+    public final TableField<QueueMetadataRecord, Integer> ENABLE_TAKE_LOG = createField(DSL.name("enable_take_log"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.inline("0", SQLDataType.INTEGER)), this, "是否开启打印take日志");
 
     /**
      * The column <code>queue_metadata.cuid</code>.
@@ -174,11 +179,11 @@ public class QueueMetadata extends TableImpl<QueueMetadataRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row9 type methods
+    // Row10 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row9<Long, String, String, Long, Long, String, String, LocalDateTime, LocalDateTime> fieldsRow() {
-        return (Row9) super.fieldsRow();
+    public Row10<Long, String, String, Integer, Long, Long, String, String, LocalDateTime, LocalDateTime> fieldsRow() {
+        return (Row10) super.fieldsRow();
     }
 }

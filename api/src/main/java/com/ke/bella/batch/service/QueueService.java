@@ -236,6 +236,17 @@ public class QueueService {
 
         tasksByQueue.forEach((queue, tasks)
                 -> meterRegistry.counter("queue.task.take.total", "queue", queue).increment(tasks.size()));
+
+        for (Map.Entry<String, List<Task>> entry : tasksByQueue.entrySet()) {
+            QueueMetadataDB meta = queueRepo.findMetadataByName(FullQueueName.valueOf(entry.getKey()).getQueueName());
+            if(!Integer.valueOf(1).equals(meta.getEnableTakeLog())) {
+                continue;
+            }
+            List<String> taskIds = entry.getValue().stream().map(Task::getTaskId).collect(Collectors.toList());
+            log.info("Tasks taken, queue={}, akCode={}, taskIds={}, takedSize:{}", entry.getKey()
+                    , BellaContext.getApikey().getCode(), taskIds, taskIds.size());
+        }
+
         return tasksByQueue;
     }
 
