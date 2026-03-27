@@ -21,6 +21,7 @@ public class QueueMetadataDB implements Operator, Serializable {
     private Long          id;
     private String        queue;
     private String        endpoint;
+    private Integer       enableTakeLog;
     private Long          cuid;
     private Long          muid;
     private String        cuName;
@@ -34,6 +35,7 @@ public class QueueMetadataDB implements Operator, Serializable {
         this.id = value.id;
         this.queue = value.queue;
         this.endpoint = value.endpoint;
+        this.enableTakeLog = value.enableTakeLog;
         this.cuid = value.cuid;
         this.muid = value.muid;
         this.cuName = value.cuName;
@@ -46,6 +48,7 @@ public class QueueMetadataDB implements Operator, Serializable {
         Long          id,
         String        queue,
         String        endpoint,
+        Integer       enableTakeLog,
         Long          cuid,
         Long          muid,
         String        cuName,
@@ -56,6 +59,7 @@ public class QueueMetadataDB implements Operator, Serializable {
         this.id = id;
         this.queue = queue;
         this.endpoint = endpoint;
+        this.enableTakeLog = enableTakeLog;
         this.cuid = cuid;
         this.muid = muid;
         this.cuName = cuName;
@@ -104,6 +108,20 @@ public class QueueMetadataDB implements Operator, Serializable {
      */
     public void setEndpoint(String endpoint) {
         this.endpoint = endpoint;
+    }
+
+    /**
+     * Getter for <code>queue_metadata.enable_take_log</code>. 是否开启打印take日志
+     */
+    public Integer getEnableTakeLog() {
+        return this.enableTakeLog;
+    }
+
+    /**
+     * Setter for <code>queue_metadata.enable_take_log</code>. 是否开启打印take日志
+     */
+    public void setEnableTakeLog(Integer enableTakeLog) {
+        this.enableTakeLog = enableTakeLog;
     }
 
     /**
@@ -197,6 +215,7 @@ public class QueueMetadataDB implements Operator, Serializable {
         sb.append(id);
         sb.append(", ").append(queue);
         sb.append(", ").append(endpoint);
+        sb.append(", ").append(enableTakeLog);
         sb.append(", ").append(cuid);
         sb.append(", ").append(muid);
         sb.append(", ").append(cuName);
