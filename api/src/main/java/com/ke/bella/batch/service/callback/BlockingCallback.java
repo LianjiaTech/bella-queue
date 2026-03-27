@@ -15,8 +15,8 @@ import java.util.Map;
 
 @Slf4j
 public class BlockingCallback implements ITaskCallback {
-    private static final int DEFAULT_TIMEOUT_SECONDS = 300;
-    private static final int MAX_TIMEOUT_SECONDS = 300;
+    private static final int DEFAULT_TIMEOUT_SECONDS = 600;
+    private static final int MAX_TIMEOUT_SECONDS = 600;
 
     private final long timeout;
     private final String taskId;

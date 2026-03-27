@@ -10,8 +10,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Slf4j
 public class StreamingCallback implements ITaskCallback {
-    private static final int DEFAULT_TIMEOUT_SECONDS = 300;
-    private static final int MAX_TIMEOUT_SECONDS = 300;
+    private static final int DEFAULT_TIMEOUT_SECONDS = 600;
+    private static final int MAX_TIMEOUT_SECONDS = 600;
     private final long timeout;
     @Getter
     private final SseEmitter emitter;
