@@ -15,6 +15,7 @@ import com.theokanning.openai.queue.Queue;
 import com.theokanning.openai.queue.Register;
 import com.theokanning.openai.queue.Take;
 import com.theokanning.openai.queue.Task;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
@@ -38,6 +39,8 @@ public class QueueController {
     private QueueService qs;
     @Resource
     private QueueRepo queueRepo;
+    @Resource
+    private MeterRegistry meterRegistry;
 
     @PostMapping("/register")
     public String register(@RequestBody Register register) {
@@ -88,11 +91,11 @@ public class QueueController {
         Task task = qs.put(put);
 
         if(ResponseMode.blocking.name().equals(put.getResponseMode())) {
-            BlockingCallback callback = new BlockingCallback(task.getTaskId(), qs, put.getTimeout());
+            BlockingCallback callback = new BlockingCallback(task.getTaskId(), put, qs, meterRegistry);
             qs.registerTaskCallback(task.getTaskId(), callback);
             return callback.getDeferredResult();
         } else if(ResponseMode.streaming.name().equals(put.getResponseMode())) {
-            StreamingCallback callback = new StreamingCallback(task.getTaskId(), qs, put.getTimeout());
+            StreamingCallback callback = new StreamingCallback(task.getTaskId(), put, qs, meterRegistry);
             qs.registerTaskCallback(task.getTaskId(), callback);
             return callback.getEmitter();
         } else {

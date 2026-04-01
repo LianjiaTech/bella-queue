@@ -3,6 +3,9 @@ package com.ke.bella.batch.service.callback;
 import com.ke.bella.batch.service.QueueService;
 import com.ke.bella.batch.utils.SseUtils;
 import com.ke.bella.queue.TaskEvent;
+import com.theokanning.openai.queue.Put;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -36,13 +39,23 @@ public class StreamingCallbackTest {
 
     private StreamingCallback streamingCallback;
     private static final String TASK_ID = "TASK-123-0-S-240304120000-0001-000001";
+    private static final String QUEUE = "test-queue";
     private static final int TIMEOUT = 300;
+
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    private Put mockPut(int timeout) {
+        Put put = mock(Put.class);
+        when(put.getQueue()).thenReturn(QUEUE);
+        when(put.getTimeout()).thenReturn(timeout);
+        return put;
+    }
 
     @Before
     public void setUp() {
         try (MockedStatic<SseUtils> sseUtilsMock = mockStatic(SseUtils.class)) {
             sseUtilsMock.when(() -> SseUtils.createSse(anyLong(), anyString())).thenReturn(sseEmitter);
-            streamingCallback = new StreamingCallback(TASK_ID, queueService, TIMEOUT);
+            streamingCallback = new StreamingCallback(TASK_ID, mockPut(TIMEOUT), queueService, meterRegistry);
         }
     }
 
@@ -61,6 +74,10 @@ public class StreamingCallbackTest {
             verify(progressEvent).getEventId();
             verify(progressEvent).getEventName();
         }
+
+        Timer ttft = meterRegistry.find("queue.task.ttft").tag("queue", QUEUE).timer();
+        assertNotNull(ttft);
+        assertEquals(1, ttft.count());
     }
 
     @Test
@@ -158,6 +175,10 @@ public class StreamingCallbackTest {
         streamingCallback.onCompletionEvent(completionEvent);
 
         verify(sseEmitter).complete();
+
+        Timer ttlt = meterRegistry.find("queue.task.ttlt").tag("queue", QUEUE).timer();
+        assertNotNull(ttlt);
+        assertEquals(1, ttlt.count());
     }
 
     @Test
@@ -183,6 +204,10 @@ public class StreamingCallbackTest {
 
         verify(sseEmitter).completeWithError(any(RuntimeException.class));
         verify(queueService).cancel(TASK_ID);
+
+        Timer ttlt = meterRegistry.find("queue.task.ttlt").tag("queue", QUEUE).timer();
+        assertNotNull(ttlt);
+        assertEquals(1, ttlt.count());
     }
 
     @Test
@@ -196,9 +221,9 @@ public class StreamingCallbackTest {
     public void testConstructor_WithZeroTimeout_ShouldUseDefault() {
         try (MockedStatic<SseUtils> sseUtilsMock = mockStatic(SseUtils.class)) {
             sseUtilsMock.when(() -> SseUtils.createSse(anyLong(), anyString())).thenReturn(sseEmitter);
-            StreamingCallback callback = new StreamingCallback(TASK_ID, queueService, 0);
+            StreamingCallback callback = new StreamingCallback(TASK_ID, mockPut(0), queueService, meterRegistry);
 
-            assertEquals(300, callback.getTimeout());
+            assertEquals(600, callback.getTimeout());
         }
     }
 
@@ -206,9 +231,9 @@ public class StreamingCallbackTest {
     public void testConstructor_WithNegativeTimeout_ShouldUseDefault() {
         try (MockedStatic<SseUtils> sseUtilsMock = mockStatic(SseUtils.class)) {
             sseUtilsMock.when(() -> SseUtils.createSse(anyLong(), anyString())).thenReturn(sseEmitter);
-            StreamingCallback callback = new StreamingCallback(TASK_ID, queueService, -10);
+            StreamingCallback callback = new StreamingCallback(TASK_ID, mockPut(-10), queueService, meterRegistry);
 
-            assertEquals(300, callback.getTimeout());
+            assertEquals(600, callback.getTimeout());
         }
     }
 
@@ -216,9 +241,9 @@ public class StreamingCallbackTest {
     public void testConstructor_WithExcessiveTimeout_ShouldCapAtMax() {
         try (MockedStatic<SseUtils> sseUtilsMock = mockStatic(SseUtils.class)) {
             sseUtilsMock.when(() -> SseUtils.createSse(anyLong(), anyString())).thenReturn(sseEmitter);
-            StreamingCallback callback = new StreamingCallback(TASK_ID, queueService, 500);
+            StreamingCallback callback = new StreamingCallback(TASK_ID, mockPut(700), queueService, meterRegistry);
 
-            assertEquals(300, callback.getTimeout());
+            assertEquals(600, callback.getTimeout());
         }
     }
 
@@ -232,7 +257,7 @@ public class StreamingCallbackTest {
         try (MockedStatic<SseUtils> sseUtilsMock = mockStatic(SseUtils.class)) {
             sseUtilsMock.when(() -> SseUtils.createSse(anyLong(), anyString())).thenReturn(sseEmitter);
 
-            new StreamingCallback(TASK_ID, queueService, TIMEOUT);
+            new StreamingCallback(TASK_ID, mockPut(TIMEOUT), queueService, meterRegistry);
 
             verify(sseEmitter).onError(errorHandlerCaptor.capture());
 
@@ -252,7 +277,7 @@ public class StreamingCallbackTest {
         try (MockedStatic<SseUtils> sseUtilsMock = mockStatic(SseUtils.class)) {
             sseUtilsMock.when(() -> SseUtils.createSse(anyLong(), anyString())).thenReturn(sseEmitter);
 
-            StreamingCallback callback = new StreamingCallback(TASK_ID, queueService, TIMEOUT);
+            StreamingCallback callback = new StreamingCallback(TASK_ID, mockPut(TIMEOUT), queueService, meterRegistry);
 
             verify(sseEmitter).onError(errorHandlerCaptor.capture());
 
