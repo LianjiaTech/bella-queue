@@ -410,9 +410,9 @@ public class QueueRepo implements BaseRepo {
                 fetchStringFromFile(queueDB.getInputFileId()), Map.class);
     }
 
-    private String parseOutputData(QueueDB queueDB) {
+    private Object parseOutputData(QueueDB queueDB) {
         return parseData(queueDB.getOutputData(),
-                fetchStringFromFile(queueDB.getOutputFileId()), String.class);
+                fetchStringFromFile(queueDB.getOutputFileId()), Object.class);
     }
 
     private <T> T parseData(String originData, String fileData, Class<T> clazz) {
