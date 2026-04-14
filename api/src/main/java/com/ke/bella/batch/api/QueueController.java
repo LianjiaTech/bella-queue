@@ -25,12 +25,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-import retrofit2.http.GET;
-
+import lombok.extern.slf4j.Slf4j;
 import javax.annotation.Resource;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/v1/queue")
 public class QueueController {
@@ -71,7 +71,13 @@ public class QueueController {
         Assert.notNull(put.getEndpoint(), "endpoint cannot be null");
         Assert.notNull(put.getData(), "data cannot be null");
 
+        log.info("put request: endpoint={}, queue={}, responseMode={}",
+                put.getEndpoint(), put.getQueue(), put.getResponseMode());
+
         Task task = qs.put(put);
+
+        log.info("put response: taskId={}, responseMode={}",
+                task.getTaskId(), put.getResponseMode());
 
         if(ResponseMode.blocking.name().equals(put.getResponseMode())) {
             BlockingCallback callback = new BlockingCallback(task.getTaskId(), qs, put.getTimeout());
