@@ -278,6 +278,10 @@ public class QueueService {
     }
 
     private void reportUsage(Task task, Map<String, Object> result) {
+        if(result == null) {
+            log.warn("result is null, skip usage report for taskId: {}", task.getTaskId());
+            return;
+        }
         Channel channel = OpenapiUtils.getChannelByQueue(task.getQueue());
         if(channel == null) {
             return;
