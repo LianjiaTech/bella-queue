@@ -15,6 +15,7 @@ import com.theokanning.openai.queue.Queue;
 import com.theokanning.openai.queue.Register;
 import com.theokanning.openai.queue.Take;
 import com.theokanning.openai.queue.Task;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
@@ -30,6 +31,7 @@ import javax.annotation.Resource;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/v1/queue")
 public class QueueController {
@@ -86,6 +88,7 @@ public class QueueController {
         Assert.notNull(put.getData(), "data cannot be null");
 
         Task task = qs.put(put);
+        log.info("put task to queue, fullQueueName: {}", put.getFullQueueName());
 
         if(ResponseMode.blocking.name().equals(put.getResponseMode())) {
             BlockingCallback callback = new BlockingCallback(task.getTaskId(), qs, put.getTimeout());
