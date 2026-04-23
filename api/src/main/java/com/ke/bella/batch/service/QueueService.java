@@ -147,6 +147,7 @@ public class QueueService {
         if(StringUtils.isBlank(put.getQueue())) {
             throw new IllegalArgumentException("Queue config cannot be found");
         }
+        log.info("put task to queue, fullQueueName: {}", put.getFullQueueName());
         QueueMetadataDB queueMeta = queueRepo.findMetadataByName(put.getQueue());
         String taskId = IDGenerator.newQueueTaskId(queueMeta.getId(), put.getQueueLevel(), put.getResponseMode());
         Task task = Task.builder().taskId(taskId).queue(put.getQueue())
