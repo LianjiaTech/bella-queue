@@ -337,6 +337,9 @@ public class BatchService {
     private void mergeFiles(BatchDB batchDB) {
         String batchId = batchDB.getBatchId();
         Path batchDir = Configs.getBatchDir(batchId);
+        if (!Files.exists(batchDir)) {
+            return;
+        }
         Path outputFile = Configs.getBatchOutputFile(batchId);
         Path errorFile = Configs.getBatchErrorFile(batchId);
 
