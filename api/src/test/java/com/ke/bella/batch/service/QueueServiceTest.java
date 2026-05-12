@@ -2,6 +2,7 @@ package com.ke.bella.batch.service;
 
 import com.ke.bella.batch.db.repo.QueueRepo;
 import com.ke.bella.batch.enums.TaskStatus;
+import com.ke.bella.batch.tables.pojos.QueueHeadDB;
 import com.ke.bella.batch.tables.pojos.QueueMetadataDB;
 import com.ke.bella.batch.utils.OpenapiUtils;
 import com.theokanning.openai.queue.Put;
@@ -256,6 +257,96 @@ public class QueueServiceTest {
         verify(queueRepo).findMetadataById(999L);
         // Verify no interaction with queue cache since metadata is null
         verifyNoInteractions(mockQueue);
+    }
+
+    // ---- getBacklog tests ----
+
+    private Cache<String, BlockingQueue<Task>> injectMockCache() throws Exception {
+        java.lang.reflect.Field cacheField = QueueService.class.getDeclaredField("QUEUE_CACHE");
+        cacheField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Cache<String, BlockingQueue<Task>> mockCache = mock(Cache.class);
+        cacheField.set(queueService, mockCache);
+        return mockCache;
+    }
+
+    @Test
+    public void testGetBacklog_OnlineQueue_ReturnsRedisSize() throws Exception {
+        Cache<String, BlockingQueue<Task>> mockCache = injectMockCache();
+        RedisBlockingQueue mockRedisQueue = mock(RedisBlockingQueue.class);
+        when(mockCache.get(eq("test-queue:0"), any())).thenReturn(mockRedisQueue);
+        when(mockRedisQueue.size()).thenReturn(42);
+
+        long backlog = queueService.getBacklog("test-queue:0");
+
+        assertEquals(42L, backlog);
+        verifyNoInteractions(queueRepo);
+    }
+
+    @Test
+    public void testGetBacklog_OfflineQueue_ReturnsDbPluRedis() throws Exception {
+        Cache<String, BlockingQueue<Task>> mockCache = injectMockCache();
+        RedisBlockingQueue mockRedisQueue = mock(RedisBlockingQueue.class);
+        when(mockCache.get(eq("test-queue:1"), any())).thenReturn(mockRedisQueue);
+        when(mockRedisQueue.size()).thenReturn(10);
+
+        QueueHeadDB head = new QueueHeadDB();
+        head.setTotalPutCnt(100L);
+        head.setTotalLoadedCnt(70L);
+        when(queueRepo.findQueueHead("test-queue:1")).thenReturn(head);
+
+        long backlog = queueService.getBacklog("test-queue:1");
+
+        // (100 - 70) + 10 = 40
+        assertEquals(40L, backlog);
+    }
+
+    @Test
+    public void testGetBacklog_OfflineQueue_QueueHeadNull_ReturnsRedisOnly() throws Exception {
+        Cache<String, BlockingQueue<Task>> mockCache = injectMockCache();
+        RedisBlockingQueue mockRedisQueue = mock(RedisBlockingQueue.class);
+        when(mockCache.get(eq("test-queue:1"), any())).thenReturn(mockRedisQueue);
+        when(mockRedisQueue.size()).thenReturn(5);
+        when(queueRepo.findQueueHead("test-queue:1")).thenReturn(null);
+
+        long backlog = queueService.getBacklog("test-queue:1");
+
+        assertEquals(5L, backlog);
+    }
+
+    @Test
+    public void testGetBacklog_OfflineQueue_NegativeDbDiff_ClampedToZero() throws Exception {
+        Cache<String, BlockingQueue<Task>> mockCache = injectMockCache();
+        RedisBlockingQueue mockRedisQueue = mock(RedisBlockingQueue.class);
+        when(mockCache.get(eq("test-queue:1"), any())).thenReturn(mockRedisQueue);
+        when(mockRedisQueue.size()).thenReturn(3);
+
+        QueueHeadDB head = new QueueHeadDB();
+        head.setTotalPutCnt(50L);
+        head.setTotalLoadedCnt(60L); // loaded > put (异常情况，DB diff 应被截断为 0)
+        when(queueRepo.findQueueHead("test-queue:1")).thenReturn(head);
+
+        long backlog = queueService.getBacklog("test-queue:1");
+
+        // max(0, 50-60) + 3 = 0 + 3 = 3
+        assertEquals(3L, backlog);
+    }
+
+    @Test
+    public void testGetBacklog_OfflineQueue_EmptyRedisAllInDb() throws Exception {
+        Cache<String, BlockingQueue<Task>> mockCache = injectMockCache();
+        RedisBlockingQueue mockRedisQueue = mock(RedisBlockingQueue.class);
+        when(mockCache.get(eq("test-queue:1"), any())).thenReturn(mockRedisQueue);
+        when(mockRedisQueue.size()).thenReturn(0);
+
+        QueueHeadDB head = new QueueHeadDB();
+        head.setTotalPutCnt(200L);
+        head.setTotalLoadedCnt(150L);
+        when(queueRepo.findQueueHead("test-queue:1")).thenReturn(head);
+
+        long backlog = queueService.getBacklog("test-queue:1");
+
+        assertEquals(50L, backlog);
     }
 
     private Task createTestTask(String taskId, String queue, int level, String ak) {

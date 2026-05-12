@@ -10,6 +10,7 @@ import com.ke.bella.batch.enums.QueueLevel;
 import com.ke.bella.batch.enums.ResponseMode;
 import com.ke.bella.batch.enums.TakeStrategy;
 import com.ke.bella.batch.tables.pojos.QueueDB;
+import com.ke.bella.batch.tables.pojos.QueueHeadDB;
 import com.ke.bella.batch.tables.pojos.QueueMetadataDB;
 import com.ke.bella.batch.utils.HttpUtils;
 import com.ke.bella.batch.utils.JsonUtils;
@@ -385,6 +386,19 @@ public class QueueService {
             Integer capacity = QueueLevel.getCapacity(level);
             return new RedisBlockingQueue(queueName, capacity, jedisPool);
         });
+    }
+
+    public long getBacklog(String fullQueueName) {
+        int redisSize = getQueue(fullQueueName).size();
+        if(QueueLevel.isOnlineQueue(fullQueueName)) {
+            return redisSize;
+        }
+        QueueHeadDB queueHead = queueRepo.findQueueHead(fullQueueName);
+        if(queueHead == null) {
+            return redisSize;
+        }
+        long dbPending = Math.max(0, queueHead.getTotalPutCnt() - queueHead.getTotalLoadedCnt());
+        return dbPending + redisSize;
     }
 
     public EventbusConfig getEventbusConfig() {

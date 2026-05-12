@@ -135,4 +135,11 @@ public class QueueController {
         return queueRepo.findQueueHead(fullQueueName);
     }
 
+    @GetMapping("/{fullQueueName}/backlog")
+    public long getBacklog(@PathVariable String fullQueueName) {
+        Assert.hasText(fullQueueName, "fullQueueName cannot be null or empty");
+
+        return qs.getBacklog(fullQueueName);
+    }
+
 }
